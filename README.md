@@ -207,3 +207,4 @@ Thanks to:
 - [sburke](https://zackreed.me/snapraid-split-parity-sync-script/#comment-300) for the Debian 10 fix
 - metagliatore (a friend, not on Github) for removing the DIFF output from the email
 - [ozboss](https://forum.openmediavault.org/wsc/index.php?user/27331-ozboss/)
+- [tehniemer](https://github.com/auanasgheps/snapraid-aio-script/pull/4) for re-introducing Docker management	
