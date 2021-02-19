@@ -395,7 +395,7 @@ function chk_sync_warn(){
       echo $SYNC_WARN_COUNT > $SYNC_WARN_FILE
 	  if [ $SYNC_WARN_COUNT == $SYNC_WARN_THRESHOLD ]; then
 		echo  "This is the **last** warning left. **NOT** proceeding with SYNC job. [`date`]"
-		mklog "This is the **last** warning left. **NOT** proceeding with SYNC job. [`date`]"
+		mklog "INFO: This is the **last** warning left. **NOT** proceeding with SYNC job. [`date`]"
 		DO_SYNC=0
 	  else 
 		echo "$((SYNC_WARN_THRESHOLD - SYNC_WARN_COUNT)) threshold warning(s) until the next forced sync. **NOT** proceeding with SYNC job. [`date`]"
