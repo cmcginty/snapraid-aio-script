@@ -3,7 +3,7 @@ The definitive all-in-one [SnapRAID](https://github.com/amadvance/snapraid) scri
 
 There are many SnapRAID scripts out there, but none could fit my needs. So I took the best of them to start a new one.
 
-It is meant to be run periodically (e.g. daily) and do the heavy lifting, then send an email you will actually read.
+It is meant to be run periodically (e.g. daily), do the heavy lifting and send an email you will actually read.
 
 Supports single and dual parity configurations.
 
@@ -21,7 +21,7 @@ _This readme has some rough edges which will be smoothened over time._
     - If parity info is out of sync **and** the number of deleted or changed files exceed the threshold you have configured it **stops**. You may want to take a look to the output log.
     - If parity info is out of sync **and** the number of deleted or changed files exceed the threshold, you can still **force a sync** after a number of warnings. It's useful If  you often get a false alarm but you're confident enough. This is called "Sync with threshold warnings"
     - If parity info is out of sync **but** the number of deleted or changed files did not exceed the threshold, it **executes a sync** to update the parity info.
-- When the parity info is in sync, either because nothing has changed or after a successfully sync, it runs the `snapraid scrub` command to validate the integrity of the data, both the files and the parity info. If sync was cancelled or other issues were found, scrub will not be run. _Note that each run of the scrub command will validate only a configurable portion of parity info to avoid having a long running job and affecting the performance of the server._
+- When the parity info is in sync, either because nothing has changed or after a successfully sync, it runs the `snapraid scrub` command to validate the integrity of the data, both the files and the parity info. If sync was cancelled or other issues were found, scrub will not be run. _Note that each run of the scrub command will validate only a configurable portion of parity info to avoid having a long running job and affecting the performance of the server._ Scrub frequency can also be customized in case you don't want to do it every time the script runs. It is still recommended to run it frequently. 
 - Extra information is be added, like SnapRAID's disk health report.  
 - When the script is done sends an email with the results, both in case of error or success.
 
@@ -34,14 +34,16 @@ If you don't know what to do, I recommend using the default values and see how i
 	- Sync always (forced sync)
 	- Sync after a number of breached threshold warnings 
 	- Sync only if thresholds warnings are not breached (enabled by default)
-	- Thresholds for deleted and updated files	
+	- User definable thresholds for deleted and updated files
 - Scrub options 
-	- Enable or disable scrub
+	- Enable or disable scrub job
+	- Delayed option, disabled by default. Run scrub only after a number of script executions, e.g. every 7 times. If you don't want to scrub your array every time, this one is for you.
 	- Data to be scrubbed - by default 5% older than 10 days
-- Pre-hashing - enabled by default to avoid silent read errors. It mitigates the lack of ECC memory.
-- SMART Log - enabled by default, a SnapRAID report for disks health status
-- Verbosity - disabled by default, does not include the TOUCH and DIFF output to have a better email
-- Spindown - to spindown drives after the script, disabled because is currently not working 
+- Container management - disabled by default. Pause your containers before running actions and restore them when completed.
+- Pre-hashing - enabled by default. Mitigate the lack of ECC memory, reading data twice to avoid silent read errors. 
+- SMART Log - enabled by default. A SnapRAID report for disks health status
+- Verbosity - disabled by default. Does not include the TOUCH and DIFF output to have a better email
+- Spindown - spindown drives after the script, disabled because is currently not working 
 - Snapraid Status - show the status of the array, disabled because the report output is not rendered correctly 
  
 
@@ -185,11 +187,11 @@ Email address is set. Sending email report to example@example.com [Sat Jan 9 02:
 If you want to use this script on OMV, don't worry about the section _Diff Script Settings_ in the main page of the SnapRAID plugin. These settings only apply to the plugin built-in script. Also don't forget to remove from scheduling the built-in script.  
 
 1. Install markdown `apt install python-markdown`. You can skip this step since the script will check and install it for you.
-2. Download config file and script, then place wherever you prefer e.g. `/usr/sbin/snapraid`
+2. Download config file and script, to be placed wherever you prefer e.g. `/usr/sbin/snapraid`
 3. Give executable rights to the main script - `chmod +x snapraid-aio-script.sh`
 4. Edit the config file and add your email address at line 9
-5. Tweak the config file if needed
-6. Schedule the script execution time
+5. Make other changes to the config file as required
+6. Schedule the script execution time 
 
 It is tested on OMV5, but will work on other distros. In such case you may have to change the mail binary or SnapRAID location.
 
