@@ -8,7 +8,7 @@
 ########################
 #   CONFIG VARIABLES   #
 ########################
-SNAPSCRIPTVERSION="2.9-DEV2"
+SNAPSCRIPTVERSION="2.9-DEV3"
 
 # find the current path
 CURRENT_DIR="$(dirname "${0}")"
@@ -69,11 +69,11 @@ function main(){
   mklog "INFO: Checking SnapRAID disks"
   sanity_check
 
-  # Pause any services that may inhibit optimum execution
+  # Pause configured containers that may inhibit optimum execution
   if [ $MANAGE_SERVICES -eq 1 ]; then
     service_array_setup
     echo
-    echo "###Pause Services [`date`]"
+    echo "###Pause Containers [`date`]"
     pause_services
   fi
 
@@ -235,10 +235,10 @@ function main(){
   #   done
   # fi
 
-  # Resume paused services
+  # Resume paused containers
   if [ $MANAGE_SERVICES -eq 1 ]; then
     echo
-    echo "###Resume Services [`date`]"
+    echo "###Resume Containers [`date`]"
     resume_services
   fi
   
@@ -474,16 +474,16 @@ $SNAPRAID_BIN scrub -p $SCRUB_PERCENT -o $SCRUB_AGE -q
 
 function service_array_setup() {
   if [ -z "$SERVICES" ]; then
-    echo "Please configure services"
+    echo "Please configure Containers"
   else
-    echo "Setting up service array"
+    echo "Setting up Containers array"
     read -a service_array <<<$SERVICES
   fi
 }
 
 function pause_services(){
   for i in ${service_array[@]}; do
-    echo "Pausing Service - ""${i^}";
+    echo "Pausing Container - ""${i^}";
     if [ $DOCKER_REMOTE -eq 1 ]; then
       ssh $DOCKER_USER@$DOCKER_IP docker pause $i
     else
@@ -494,7 +494,7 @@ function pause_services(){
 
 function resume_services(){
   for i in ${service_array[@]}; do
-    echo "Resuming Service - ""${i^}";
+    echo "Resuming Container - ""${i^}";
     if [ $DOCKER_REMOTE -eq 1 ]; then
       ssh $DOCKER_USER@$DOCKER_IP docker unpause $i
     else
