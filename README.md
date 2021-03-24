@@ -20,7 +20,10 @@ Contributions are welcome!
 - When the parity info is in sync, either because nothing has changed or after a successfully sync, it runs the `snapraid scrub` command to validate the integrity of the data, both the files and the parity info. If sync was cancelled or other issues were found, scrub will not be run. _Note that each run of the scrub command will validate only a configurable portion of parity info to avoid having a long running job and affecting the performance of the server._ Scrub frequency can also be customized in case you don't want to do it every time the script runs. It is still recommended to run scrub frequently. 
 - Extra information is be added, like SnapRAID's disk health report.  
 - When the script is done sends an email with the results, both in case of error or success.
+
+### Additional Information
 - Docker container management, if enabled, will pause containers before SnapRAID activity and restore them when finished. This avoids nasty errors aboud data being written during SnapRAID sync.
+- Important messages are sent to the system log, at least on OMV.
 
 ## Customization
 Many options can be changed to your taste, their behavior is documented in the script config file.
@@ -28,20 +31,20 @@ If you don't know what to do, I recommend using the default values and see how i
 
 ### Customizable features
 - Sync options
-	- Sync always (forced sync)
-	- Sync after a number of breached threshold warnings 
-	- Sync only if thresholds warnings are not breached (enabled by default)
-	- User definable thresholds for deleted and updated files
+	- Sync always (forced sync).
+	- Sync after a number of breached threshold warnings. 
+	- Sync only if thresholds warnings are not breached (enabled by default).
+	- User definable thresholds for deleted and updated files.
 - Scrub options 
-	- Enable or disable scrub job
+	- Enable or disable scrub job.
 	- Delayed option, disabled by default. Run scrub only after a number of script executions, e.g. every 7 times. If you don't want to scrub your array every time, this one is for you.
-	- Data to be scrubbed - by default 5% older than 10 days
-- Container management - disabled by default. Enter a list of the containers you want to be paused before running actions and restored when completed.
+	- Data to be scrubbed - by default 5% older than 10 days.
 - Pre-hashing - enabled by default. Mitigate the lack of ECC memory, reading data twice to avoid silent read errors. 
-- SMART Log - enabled by default. A SnapRAID report for disks health status
-- Verbosity - disabled by default. Does not include the TOUCH and DIFF output to have a better email
-- Spindown - spindown drives after the script, disabled because is currently not working 
-- Snapraid Status - show the status of the array, disabled because the report output is not rendered correctly 
+- SMART Log - enabled by default. A SnapRAID report for disks health status.
+- Container management - disabled by default. A list of containers you want to be paused before running actions and restored when completed.
+- Verbosity - disabled by default. When enabled, includes the TOUCH and DIFF commands output, email will be huge and unreadable.
+- Spindown - spindown drives after the script, disabled because is currently not working. 
+- Snapraid Status - show the status of the array, disabled because the report output is not rendered correctly. 
  
 
 You can also change more advanced options such as mail binary (by default uses `mailx`), SnapRAID binary location, log file location.
@@ -49,9 +52,9 @@ You can also change more advanced options such as mail binary (by default uses `
 ## A nice email report
 This report produces emails that don't contain a list of changed files to improve clarity.
 
-You can re-enable full output in the email by switching the option `VERBOSITY` but the full report will always be available in `/tmp/snapRAID.out` but will be replaced after each run, or deleted when the system is shut down. You can change the location of the file, if needed.
+You can re-enable full output in the email by switching the option `VERBOSITY` but the full report will always be available in `/tmp/snapRAID.out` but will be replaced after each run, or deleted when the system is shut down. You can change the location of the file if you need to keep it.
 
-Here's a sneak peek of the email report.
+Here's a sneak peek of the email report. 
 
 ```markdown
 ## [COMPLETED] DIFF + SYNC + SCRUB Jobs (SnapRAID on omv-test.local)
