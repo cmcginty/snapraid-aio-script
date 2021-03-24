@@ -5,13 +5,9 @@ There are many SnapRAID scripts out there, but none could fit my needs. So I too
 
 It is meant to be run periodically (e.g. daily), do the heavy lifting and send an email you will actually read.
 
-Supports single and dual parity configurations.
+Supports single and dual parity configurations. It is customizable and has been tested with Debian 10 and [OpenMediaVault 5](https://github.com/openmediavault/openmediavault).
 
-It is customizable and has been tested with Debian 10 and [OpenMediaVault 5](https://github.com/openmediavault/openmediavault).
-
-Contributions are welcome: there's always room for improvement!
-
-_This readme has some rough edges which will be smoothened over time._
+Contributions are welcome!
 
 # Highlights
 
@@ -21,9 +17,10 @@ _This readme has some rough edges which will be smoothened over time._
     - If parity info is out of sync **and** the number of deleted or changed files exceed the threshold you have configured it **stops**. You may want to take a look to the output log.
     - If parity info is out of sync **and** the number of deleted or changed files exceed the threshold, you can still **force a sync** after a number of warnings. It's useful If  you often get a false alarm but you're confident enough. This is called "Sync with threshold warnings"
     - If parity info is out of sync **but** the number of deleted or changed files did not exceed the threshold, it **executes a sync** to update the parity info.
-- When the parity info is in sync, either because nothing has changed or after a successfully sync, it runs the `snapraid scrub` command to validate the integrity of the data, both the files and the parity info. If sync was cancelled or other issues were found, scrub will not be run. _Note that each run of the scrub command will validate only a configurable portion of parity info to avoid having a long running job and affecting the performance of the server._ Scrub frequency can also be customized in case you don't want to do it every time the script runs. It is still recommended to run it frequently. 
+- When the parity info is in sync, either because nothing has changed or after a successfully sync, it runs the `snapraid scrub` command to validate the integrity of the data, both the files and the parity info. If sync was cancelled or other issues were found, scrub will not be run. _Note that each run of the scrub command will validate only a configurable portion of parity info to avoid having a long running job and affecting the performance of the server._ Scrub frequency can also be customized in case you don't want to do it every time the script runs. It is still recommended to run scrub frequently. 
 - Extra information is be added, like SnapRAID's disk health report.  
 - When the script is done sends an email with the results, both in case of error or success.
+- Docker container management, if enabled, will pause containers before SnapRAID activity and restore them when finished. This avoids nasty errors aboud data being written during SnapRAID sync.
 
 ## Customization
 Many options can be changed to your taste, their behavior is documented in the script config file.
@@ -39,7 +36,7 @@ If you don't know what to do, I recommend using the default values and see how i
 	- Enable or disable scrub job
 	- Delayed option, disabled by default. Run scrub only after a number of script executions, e.g. every 7 times. If you don't want to scrub your array every time, this one is for you.
 	- Data to be scrubbed - by default 5% older than 10 days
-- Container management - disabled by default. Pause your containers before running actions and restore them when completed.
+- Container management - disabled by default. Enter a list of the containers you want to be paused before running actions and restored when completed.
 - Pre-hashing - enabled by default. Mitigate the lack of ECC memory, reading data twice to avoid silent read errors. 
 - SMART Log - enabled by default. A SnapRAID report for disks health status
 - Verbosity - disabled by default. Does not include the TOUCH and DIFF output to have a better email
