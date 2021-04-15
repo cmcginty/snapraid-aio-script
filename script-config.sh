@@ -76,7 +76,6 @@ SYNC_WARN_FILE="$CURRENT_DIR/snapRAID.warnCount"
 SCRUB_COUNT_FILE="$CURRENT_DIR/snapRAID.scrubCount"
 TMP_OUTPUT="/tmp/snapRAID.out"
 SNAPRAID_LOG="/var/log/snapraid.log"
-SECONDS=0 #Capture time
 SNAPRAID_CONF="/etc/snapraid.conf"
 
 # Expand PATH for smartctl
