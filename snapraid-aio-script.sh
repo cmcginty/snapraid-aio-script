@@ -90,39 +90,19 @@ function main(){
   # Get number of deleted, updated, and modified files...
   get_counts
 
-  # sanity check to make sure that we were able to get our counts from the
-  # output of the DIFF job
-  if [ -z "$DEL_COUNT" ] || [ -z "$ADD_COUNT" ] || [ -z "$MOVE_COUNT" ] || [ -z "$COPY_COUNT" ] || [ -z "$UPDATE_COUNT" ]; then
-    # failed to get one or more of the count values, lets report to user and
-    # exit with error code
-    echo "**ERROR** - failed to get one or more count values. Unable to proceed."
-    echo "Exiting script. [$(date)]"
-    if [ $EMAIL_ADDRESS ]; then
-      SUBJECT="$EMAIL_SUBJECT_PREFIX WARNING - Unable to proceed with SYNC/SCRUB job(s). Check DIFF job output."
-      trim_log < "$TMP_OUTPUT" | send_mail
-    fi
-    exit 1;
-  fi
-  echo "**SUMMARY of changes - Added [$ADD_COUNT] - Deleted [$DEL_COUNT] - Moved [$MOVE_COUNT] - Copied [$COPY_COUNT] - Updated [$UPDATE_COUNT]**"
-  mklog "INFO: SUMMARY of changes - Added [$ADD_COUNT] - Deleted [$DEL_COUNT] - Moved [$MOVE_COUNT] - Copied [$COPY_COUNT] - Updated [$UPDATE_COUNT]"
-
-  # check if the conditions to run SYNC are met
-  # CHK 1 - if files have changed
-  if [ "$DEL_COUNT" -gt 0 ] || [ "$ADD_COUNT" -gt 0 ] || [ "$MOVE_COUNT" -gt 0 ] || [ "$COPY_COUNT" -gt 0 ] || [ "$UPDATE_COUNT" -gt 0 ]; then
-    chk_del
-
-    if [ "$CHK_FAIL" -eq 0 ]; then
-      chk_updated
-    fi
-
-    if [ "$CHK_FAIL" -eq 1 ]; then
-      chk_sync_warn
-    fi
-  else
-    # NO, so let's skip SYNC
+  # Without changes, the SYNC can be skipped.
+  if (((DEL_COUNT + ADD_COUNT + MOVE_COUNT + COPY_COUNT + UPDATE_COUNT) == 0)); then
     echo "No change detected. Not running SYNC job. [$(date)]"
     mklog "INFO: No change detected. Not running SYNC job."
     DO_SYNC=0
+  else
+    chk_del
+    if ((CHK_FAIL == 0)); then
+      chk_updated
+    else
+      # TODO: Add support for 'chk_updated' failures.
+      chk_sync_warn
+    fi
   fi
 
   # Now run sync if conditions are met
@@ -311,6 +291,20 @@ function get_counts() {
   MOVE_COUNT=$(grep -w '^ \{1,\}[0-9]* moved' "$TMP_OUTPUT" | sed 's/^ *//g' | cut -d ' ' -f1)
   COPY_COUNT=$(grep -w '^ \{1,\}[0-9]* copied' "$TMP_OUTPUT" | sed 's/^ *//g' | cut -d ' ' -f1)
   # REST_COUNT=$(grep -w '^ \{1,\}[0-9]* restored' $TMP_OUTPUT | sed 's/^ *//g' | cut -d ' ' -f1)
+
+  # Sanity check to all counts from the output of the DIFF job.
+  if [[ -z "$DEL_COUNT" || -z "$ADD_COUNT" || -z "$MOVE_COUNT" ||
+        -z "$COPY_COUNT" || -z "$UPDATE_COUNT" ]]; then
+    # Failed to get one or more of the count values, report to user and exit
+    # with error code.
+    echo "**ERROR** - failed to get one or more count values. Unable to proceed."
+    echo "Exiting script. [$(date)]"
+    SUBJECT="$EMAIL_SUBJECT_PREFIX WARNING - Unable to proceed with SYNC/SCRUB job(s). Check DIFF job output."
+    send_mail < "$TMP_OUTPUT"
+    exit 1;
+  fi
+  echo "**SUMMARY of changes - Added [$ADD_COUNT] - Deleted [$DEL_COUNT] - Moved [$MOVE_COUNT] - Copied [$COPY_COUNT] - Updated [$UPDATE_COUNT]**"
+  mklog "INFO: SUMMARY of changes - Added [$ADD_COUNT] - Deleted [$DEL_COUNT] - Moved [$MOVE_COUNT] - Copied [$COPY_COUNT] - Updated [$UPDATE_COUNT]"
 }
 
 function sed_me(){
@@ -320,7 +314,6 @@ function sed_me(){
   # Processes which are not parents of the shell.
   exec >& "$OUT" 2>& "$ERROR"
   sed -i "$1" "$2"
-
   output_to_file_screen
 }
 
@@ -523,7 +516,8 @@ function prepare_mail() {
   fi
 }
 
-# Trim the log file read from stdin.
+# Remove the verbose output of TOUCH and DIFF commands to make the email more
+# concise.
 function trim_log(){
   sed '
     /^Running TOUCH job to timestamp/,/^\TOUCH finished/{
@@ -532,10 +526,13 @@ function trim_log(){
     /^### SnapRAID DIFF/,/^\DIFF finished/{
       /^### SnapRAID DIFF/!{/^DIFF finished/!d}
     }'
-  }
+}
 
 # Process and mail the email body read from stdin.
 function send_mail(){
+  if [ -z "$EMAIL_ADDRESS" ]; then
+    return
+  fi
   local body; body=$(cat)
   # Send the raw $body and append the HTML.
   # Try to workaround py markdown 2.6.8 issues:
@@ -585,6 +582,6 @@ function mklog() {
 }
 
 # Read SnapRAID version
-SNAPRAIDVERSION="$(snapraid -V | sed -e 's/snapraid v\(.*\)by.*/\1/')"
+SNAPRAIDVERSION="$(snapraid -V | sed 's/snapraid v\(.*\)by.*/\1/')"
 
 main "$@"
