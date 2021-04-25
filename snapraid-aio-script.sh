@@ -34,39 +34,29 @@ function main(){
   output_to_file_screen
 
   # timestamp the job
-  echo "SnapRAID Script Job started [$(date)]"
-  echo "Running SnapRAID version $SNAPRAIDVERSION"
-  echo "SnapRAID AIO Script version $SNAPSCRIPTVERSION"
+  elog INFO "SnapRAID Script Job started."
+  elog INFO "Running SnapRAID version $SNAPRAIDVERSION"
+  elog INFO "SnapRAID AIO Script version $SNAPSCRIPTVERSION"
+
   echo "----------------------------------------"
-  mklog "INFO: ----------------------------------------"
-  mklog "INFO: SnapRAID Script Job started"
-  mklog "INFO: Running SnapRAID version $SNAPRAIDVERSION"
-  mklog "INFO: SnapRAID Script version $SNAPSCRIPTVERSION"
-
-
   echo "## Preprocessing"
 
   # Check if script configuration file has been found
   if [ ! -f "$CONFIG_FILE" ]; then
-    echo "Script configuration file not found! The script cannot be run! Please check and try again!"
-    mklog "WARN: Script configuration file not found! The script cannot be run! Please check and try again!"
+    elog WARN "Script configuration file not found! The script cannot be run! Please check and try again!"
     exit 1;
   else
-    echo "Configuration file found! Proceeding."
-    mklog "INFO: Script configuration file found! Proceeding."
+    elog INFO "Configuration file found! Proceeding."
   fi
 
   # install markdown if not present
   if [ "$(dpkg-query -W -f='${Status}' python-markdown 2>/dev/null | grep -c "ok installed")" -eq 0 ]; then
-    echo "**Markdown has not been found and will be installed.**"
-    mklog "WARN: Markdown has not been found and will be installed."
+    elog WARN "**Markdown has not been found and will be installed.**"
     # super silent and secret install command
     export DEBIAN_FRONTEND=noninteractive
     apt-get install -qq -o=Dpkg::Use-Pty=0 python-markdown;
   fi
 
-  # sanity check first to make sure we can access the content and parity files
-  mklog "INFO: Checking SnapRAID disks"
   sanity_check
 
   echo "----------------------------------------"
@@ -76,15 +66,14 @@ function main(){
   chk_zero
 
   # run the snapraid DIFF command
-  echo "### SnapRAID DIFF [$(date)]"
-  mklog "INFO: SnapRAID DIFF started"
+  echo "### SnapRAID DIFF"
+  elog INFO "DIFF Job started."
   echo "\`\`\`"
   $SNAPRAID_BIN diff
   close_output_and_wait
   output_to_file_screen
   echo "\`\`\`"
-  echo "DIFF finished [$(date)]"
-  mklog "INFO: SnapRAID DIFF finished"
+  elog INFO "DIFF finished."
   JOBS_DONE="DIFF"
 
   # Get number of deleted, updated, and modified files...
@@ -92,8 +81,7 @@ function main(){
 
   # Without changes, the SYNC can be skipped.
   if (((DEL_COUNT + ADD_COUNT + MOVE_COUNT + COPY_COUNT + UPDATE_COUNT) == 0)); then
-    echo "No change detected. Not running SYNC job. [$(date)]"
-    mklog "INFO: No change detected. Not running SYNC job."
+    elog INFO "No change detected. Not running SYNC job."
     DO_SYNC=0
   else
     chk_del
@@ -108,8 +96,8 @@ function main(){
   # Now run sync if conditions are met
   if [ "$DO_SYNC" -eq 1 ]; then
     echo "SYNC is authorized. [$(date)]"
-    echo "### SnapRAID SYNC [$(date)]"
-    mklog "INFO: SnapRAID SYNC Job started"
+    echo "### SnapRAID SYNC"
+    elog INFO "SYNC Job started."
     echo "\`\`\`"
     if [ "$PREHASH" -eq 1 ]; then
       $SNAPRAID_BIN sync -h -q
@@ -119,8 +107,7 @@ function main(){
     close_output_and_wait
     output_to_file_screen
     echo "\`\`\`"
-    echo "SYNC finished [$(date)]"
-    mklog "INFO: SnapRAID SYNC Job finished"
+    elog INFO "SYNC finished."
     JOBS_DONE="$JOBS_DONE + SYNC"
     # insert SYNC marker to 'Everything OK' or 'Nothing to do' string to
     # differentiate it from SCRUB job later
@@ -136,15 +123,13 @@ function main(){
   fi
 
   # Moving onto scrub now. Check if user has enabled scrub
-  echo "### SnapRAID SCRUB [$(date)]"
-	mklog "INFO: SnapRAID SCRUB Job started"
+  echo "### SnapRAID SCRUB"
   if [ "$SCRUB_PERCENT" -gt 0 ]; then
     # YES, first let's check if delete threshold has been breached and we have
     # not forced a sync.
     if [ "$CHK_FAIL" -eq 1 ] && [ "$DO_SYNC" -eq 0 ]; then
       # YES, parity is out of sync so let's not run scrub job
-      echo "Scrub job is cancelled as parity info is out of sync (deleted or changed files threshold has been breached). [$(date)]"
-      mklog "INFO: Scrub job is cancelled as parity info is out of sync (deleted or changed files threshold has been breached)."
+      elog INFO "Scrub job is cancelled as parity info is out of sync (deleted or changed files threshold has been breached)."
     else
       # NO, delete threshold has not been breached OR we forced a sync, but we
       # have one last test - let's make sure if sync ran, it completed
@@ -152,8 +137,7 @@ function main(){
       if [ "$DO_SYNC" -eq 1 ] && ! grep -qw "$SYNC_MARKER" "$TMP_OUTPUT"; then
         # Sync ran but did not complete successfully so lets not run scrub to
         # be safe
-        echo "**WARNING** - check output of SYNC job. Could not detect marker. Not proceeding with SCRUB job. [$(date)]"
-        mklog "WARN: Check output of SYNC job. Could not detect marker. Not proceeding with SCRUB job."
+        elog WARN "**WARNING** - check output of SYNC job. Could not detect marker. Not proceeding with SCRUB job."
       else
         # Everything ok - ready to run the scrub job!
         # The fuction will check if scrub delayed run is enabled and run scrub
@@ -162,8 +146,7 @@ function main(){
       fi
     fi
   else
-    echo "Scrub job is not enabled. Not running SCRUB job. [$(date)]"
-    mklog "INFO: Scrub job is not enabled. Not running SCRUB job."
+    elog INFO "Scrub job is not enabled. Not running SCRUB job."
   fi
 
   echo "----------------------------------------"
@@ -171,33 +154,38 @@ function main(){
 
   # Show SnapRAID SMART info if enabled
   if [ "$SMART_LOG" -eq 1 ]; then
-    echo "### SnapRAID Smart"
+    echo "### SnapRAID SMART"
+    elog INFO "SMART Job started."
     echo "\`\`\`"
     $SNAPRAID_BIN smart
     close_output_and_wait
     output_to_file_screen
     echo "\`\`\`"
+    elog INFO "SMART finished."
   fi
 
   # Show SnapRAID Status information if enabled
   if [ "$SNAP_STATUS" -eq 1 ]; then
-    echo "### SnapRAID Status"
+    echo "### SnapRAID STATUS"
+    elog INFO "STATUS Job started."
     echo "\`\`\`"
     $SNAPRAID_BIN status
     close_output_and_wait
     output_to_file_screen
     echo "\`\`\`"
+    elog INFO "STATUS finished."
   fi
-
 
   # Spinning down disks (Method 1: snapraid - preferred)
   if [ "$SPINDOWN" -eq 1 ]; then
-    echo "### SnapRAID Spindown"
+    echo "### SnapRAID SPINDOWN"
+    elog INFO "SPINDOWN Job started."
     echo "\`\`\`"
     $SNAPRAID_BIN down
     close_output_and_wait
     output_to_file_screen
     echo "\`\`\`"
+    elog INFO "SPINDOWN finished."
   fi
 
   # Spinning down disks (Method 2: hdparm - spins down all rotational devices)
@@ -221,19 +209,17 @@ function main(){
   #   done
   # fi
 
-  echo "All jobs ended. [$(date)]"
-  mklog "INFO: Snapraid: all jobs ended."
+  elog INFO "All jobs ended."
 
   # all jobs done, let's send output to user if configured
   if [ "$EMAIL_ADDRESS" ]; then
-    echo -e "Email address is set. Sending email report to **$EMAIL_ADDRESS** [$(date)]"
+    echo -e "Email address is set. Sending email report to **$EMAIL_ADDRESS**"
     # check if deleted count exceeded threshold
     prepare_mail
 
     ELAPSED="$((SECONDS / 3600))hrs $(((SECONDS / 60) % 60))min $((SECONDS % 60))sec"
     echo "----------------------------------------"
     echo "## Total time elapsed for SnapRAID: $ELAPSED"
-    mklog "INFO: Total time elapsed for SnapRAID: $ELAPSED"
 
     # Add a topline to email body
     sed_me "1s:^:##$SUBJECT \n:" "${TMP_OUTPUT}"
@@ -251,12 +237,12 @@ function main(){
 # FUNCTIONS & METHODS #
 #######################
 
+# Sanity check first to make sure we can access the content and parity files.
 function sanity_check() {
+  elog INFO "Checking SnapRAID disks."
   if [ ! -e "$CONTENT_FILE" ]; then
-    echo "**ERROR** Content file ($CONTENT_FILE) not found!"
-    echo "**ERROR**: Please check the status of your disks! The script exits here due to missing file or disk..."
-    mklog "WARN: Content file ($CONTENT_FILE) not found!"
-    mklog "WARN: Please check the status of your disks! The script exits here due to missing file or disk..."
+    elog ERROR "**ERROR** Content file ($CONTENT_FILE) not found!"
+    elog ERROR "**ERROR** Please check the status of your disks! The script exits here due to missing file or disk..."
     prepare_mail
     # Add a topline to email body
     sed_me "1s:^:##$SUBJECT \n:" "${TMP_OUTPUT}"
@@ -264,15 +250,11 @@ function sanity_check() {
     exit;
   fi
 
-  echo "Testing that all parity files are present."
-  mklog "INFO: Testing that all parity files are present."
+  elog INFO "Testing that all parity files are present."
   for i in "${PARITY_FILES[@]}"; do
     if [ ! -e "$i" ]; then
-      echo "[$(date)] ERROR - Parity file ($i) not found!"
-      echo "ERROR - Parity file ($i) not found!" >> "$TMP_OUTPUT"
-      echo "**ERROR**: Please check the status of your disks! The script exits here due to missing file or disk..."
-      mklog "WARN: Parity file ($i) not found!"
-      mklog "WARN: Please check the status of your disks! The script exits here due to missing file or disk..."
+      elog ERROR "**ERROR** Parity file ($i) not found!"
+      elog ERROR "**ERROR** Please check the status of your disks! The script exits here due to missing file or disk..."
       prepare_mail
       # Add a topline to email body
       sed_me "1s:^:##$SUBJECT \n:" "${TMP_OUTPUT}"
@@ -297,14 +279,12 @@ function get_counts() {
         -z "$COPY_COUNT" || -z "$UPDATE_COUNT" ]]; then
     # Failed to get one or more of the count values, report to user and exit
     # with error code.
-    echo "**ERROR** - failed to get one or more count values. Unable to proceed."
-    echo "Exiting script. [$(date)]"
+    elog ERROR "**ERROR** Failed to get one or more count values. Unable to proceed."
     SUBJECT="$EMAIL_SUBJECT_PREFIX WARNING - Unable to proceed with SYNC/SCRUB job(s). Check DIFF job output."
     send_mail < "$TMP_OUTPUT"
     exit 1;
   fi
-  echo "**SUMMARY of changes - Added [$ADD_COUNT] - Deleted [$DEL_COUNT] - Moved [$MOVE_COUNT] - Copied [$COPY_COUNT] - Updated [$UPDATE_COUNT]**"
-  mklog "INFO: SUMMARY of changes - Added [$ADD_COUNT] - Deleted [$DEL_COUNT] - Moved [$MOVE_COUNT] - Copied [$COPY_COUNT] - Updated [$UPDATE_COUNT]"
+  elog INFO "**SUMMARY of changes - Added [$ADD_COUNT] - Deleted [$DEL_COUNT] - Moved [$MOVE_COUNT] - Copied [$COPY_COUNT] - Updated [$UPDATE_COUNT]**"
 }
 
 function sed_me(){
@@ -327,8 +307,7 @@ function chk_del(){
       DO_SYNC=1
     fi
   else
-    echo "**WARNING** Deleted files ($DEL_COUNT) reached/exceeded threshold ($DEL_THRESHOLD)."
-    mklog "WARN: Deleted files ($DEL_COUNT) reached/exceeded threshold ($DEL_THRESHOLD)."
+    elog WARN "**WARNING** Deleted files ($DEL_COUNT) reached/exceeded threshold ($DEL_THRESHOLD)."
     CHK_FAIL=1
   fi
 }
@@ -343,8 +322,7 @@ function chk_updated(){
       DO_SYNC=1
     fi
   else
-    echo "**WARNING** Updated files ($UPDATE_COUNT) reached/exceeded threshold ($UP_THRESHOLD)."
-    mklog "WARN: Updated files ($UPDATE_COUNT) reached/exceeded threshold ($UP_THRESHOLD)."
+    elog WARN "**WARNING** Updated files ($UPDATE_COUNT) reached/exceeded threshold ($UP_THRESHOLD)."
     CHK_FAIL=1
   fi
 }
@@ -352,11 +330,9 @@ function chk_updated(){
 function chk_sync_warn(){
   if [ "$SYNC_WARN_THRESHOLD" -gt -1 ]; then
     if [ "$SYNC_WARN_THRESHOLD" -eq 0 ]; then
-      echo "Forced sync is enabled."
-      mklog "INFO: Forced sync is enabled."
+      elog INFO "Forced sync is enabled."
     else
-      echo "Sync after threshold warning(s) is enabled."
-      mklog "INFO: Sync after threshold warning(s) is enabled."
+      elog INFO "Sync after threshold warning(s) is enabled."
     fi
 
     local sync_warn_count
@@ -373,8 +349,7 @@ function chk_sync_warn(){
         # If there is at least one warn count, output a message and force a
         # sync job. Do not need to remove warning marker here as it is
         # automatically removed when the sync job is run by this script
-        echo "Number of threshold warning(s) ($sync_warn_count) has reached/exceeded threshold ($SYNC_WARN_THRESHOLD). Forcing a SYNC job to run."
-        mklog "INFO: Number of threshold warning(s) ($sync_warn_count) has reached/exceeded threshold ($SYNC_WARN_THRESHOLD). Forcing a SYNC job to run."
+        elog INFO "Number of threshold warning(s) ($sync_warn_count) has reached/exceeded threshold ($SYNC_WARN_THRESHOLD). Forcing a SYNC job to run."
         DO_SYNC=1
       fi
     else
@@ -382,25 +357,23 @@ function chk_sync_warn(){
       ((sync_warn_count += 1))
       echo "$sync_warn_count" > "$SYNC_WARN_FILE"
       if [ "$sync_warn_count" == "$SYNC_WARN_THRESHOLD" ]; then
-        echo  "This is the **last** warning left. **NOT** proceeding with SYNC job. [$(date)]"
-        mklog "INFO: This is the **last** warning left. **NOT** proceeding with SYNC job. [$(date)]"
+        elog INFO "This is the **last** warning left. **NOT** proceeding with SYNC job."
         DO_SYNC=0
       else
-        echo "$((SYNC_WARN_THRESHOLD - sync_warn_count)) threshold warning(s) until the next forced sync. **NOT** proceeding with SYNC job. [$(date)]"
-        mklog "INFO: $((SYNC_WARN_THRESHOLD - sync_warn_count)) threshold warning(s) until the next forced sync. **NOT** proceeding with SYNC job."
+        elog INFO "$((SYNC_WARN_THRESHOLD - sync_warn_count)) threshold warning(s) until the next forced sync. **NOT** proceeding with SYNC job."
         DO_SYNC=0
       fi
     fi
   else
     # NO, so let's skip SYNC
-    echo "Forced sync is not enabled. Check $TMP_OUTPUT for details. **NOT** proceeding with SYNC job. [$(date)]"
-    mklog "INFO: Forced sync is not enabled. Check $TMP_OUTPUT for details. **NOT** proceeding with SYNC job."
+    elog INFO "Forced sync is not enabled. Check $TMP_OUTPUT for details. **NOT** proceeding with SYNC job."
     DO_SYNC=0
   fi
 }
 
 function chk_zero(){
-  echo "### SnapRAID TOUCH [$(date)]"
+  echo "### SnapRAID TOUCH"
+  elog INFO "TOUCH started."
   echo "Checking for zero sub-second files."
   TIMESTATUS=$($SNAPRAID_BIN status | grep 'You have [1-9][0-9]* files with zero sub-second timestamp\.' | sed 's/^You have/Found/g')
   if [ -n "$TIMESTATUS" ]; then
@@ -414,13 +387,12 @@ function chk_zero(){
   else
     echo "No zero sub-second timestamp files found."
   fi
-  echo "TOUCH finished [$(date)]"
+  elog INFO "TOUCH finished."
 }
 
 function chk_scrub_settings(){
 	if [ "$SCRUB_DELAYED_RUN" -gt 0 ]; then
-    echo "Delayed scrub is enabled."
-    mklog "INFO: Delayed scrub is enabled.."
+    elog INFO "Delayed scrub is enabled."
   fi
 
 	local scrub_count
@@ -432,15 +404,12 @@ function chk_scrub_settings(){
     # Run a scrub job. if the warn count is zero it means the scrub was already
     # forced, do not output a dumb message and continue with the scrub job.
     if [ "$scrub_count" -eq 0 ]; then
-      echo
       run_scrub
     else
       # if there is at least one warn count, output a message and force a scrub
       # job. Do not need to remove warning marker here as it is automatically
       # removed when the scrub job is run by this script
-      echo "Number of delayed runs has reached/exceeded threshold ($SCRUB_DELAYED_RUN). A SCRUB job will run."
-      mklog "INFO: Number of delayed runs has reached/exceeded threshold ($SCRUB_DELAYED_RUN). A SCRUB job will run."
-      echo
+      elog INFO "Number of delayed runs has reached/exceeded threshold ($SCRUB_DELAYED_RUN). A SCRUB job will run."
       run_scrub
     fi
 	else
@@ -448,23 +417,21 @@ function chk_scrub_settings(){
     ((scrub_count += 1))
     echo "$scrub_count" > "$SCRUB_COUNT_FILE"
     if [ "$scrub_count" == "$SCRUB_DELAYED_RUN" ]; then
-      echo  "This is the **last** run left before running scrub job next time. [$(date)]"
-      mklog "INFO: This is the **last** run left before running scrub job next time. [$(date)]"
+      elog INFO "This is the **last** run left before running scrub job next time."
     else
-      echo "$((SCRUB_DELAYED_RUN - scrub_count)) runs until the next scrub. **NOT** proceeding with SCRUB job. [$(date)]"
-      mklog "INFO: $((SCRUB_DELAYED_RUN - scrub_count)) runs until the next scrub. **NOT** proceeding with SCRUB job. [$(date)]"
+      elog INFO "$((SCRUB_DELAYED_RUN - scrub_count)) runs until the next scrub. **NOT** proceeding with SCRUB job."
     fi
 	fi
 }
 
 function run_scrub(){
+  elog INFO "SCRUB Job started."
   echo "\`\`\`"
   $SNAPRAID_BIN scrub -p $SCRUB_PERCENT -o $SCRUB_AGE -q
   close_output_and_wait
   output_to_file_screen
   echo "\`\`\`"
-  echo "SCRUB finished [$(date)]"
-  mklog "INFO: SnapRAID SCRUB Job finished"
+  elog INFO "SCRUB finished."
   JOBS_DONE="$JOBS_DONE + SCRUB"
   # insert SCRUB marker to 'Everything OK' or 'Nothing to do' string to
   # differentiate it from SYNC job above
@@ -571,14 +538,13 @@ function output_to_file_screen(){
   exec > >(tee -a "${TMP_OUTPUT}") 2>&1
 }
 
-# Sends important messages to syslog
-function mklog() {
-  [[ "$*" =~ ^([A-Za-z]*):\ (.*) ]] &&
-  {
-    PRIORITY=${BASH_REMATCH[1]} # INFO, DEBUG, WARN
-    LOGMESSAGE=${BASH_REMATCH[2]} # the Log-Message
-  }
-  echo "$(date '+[%Y-%m-%d %H:%M:%S]') $(basename "$0"): $PRIORITY: '$LOGMESSAGE'" >> "$SNAPRAID_LOG"
+# "echo and log"; send messages to STDOUT and /var/log/, where $1 is the
+# log level and $2 is the message.
+function elog() {
+  local priority; priority=$1
+  local message; message=$2
+  echo "$message [$(date)]"
+  echo "$(date '+[%Y-%m-%d %H:%M:%S]') $priority: $message" >> "$SNAPRAID_LOG"
 }
 
 # Read SnapRAID version
