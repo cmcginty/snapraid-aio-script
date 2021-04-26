@@ -43,7 +43,8 @@ function main(){
 
   # Check if script configuration file has been found
   if [ ! -f "$CONFIG_FILE" ]; then
-    elog WARN "Script configuration file not found! The script cannot be run! Please check and try again!"
+    elog WARN "Script configuration file not found! The script cannot be run!" \
+        "Please check and try again!"
     exit 1;
   else
     elog INFO "Configuration file found! Proceeding."
@@ -129,7 +130,8 @@ function main(){
     # not forced a sync.
     if [ "$CHK_FAIL" -eq 1 ] && [ "$DO_SYNC" -eq 0 ]; then
       # YES, parity is out of sync so let's not run scrub job
-      elog INFO "Scrub job is cancelled as parity info is out of sync (deleted or changed files threshold has been breached)."
+      elog INFO "Scrub job is cancelled as parity info is out of sync" \
+          "(deleted or changed files threshold has been breached)."
     else
       # NO, delete threshold has not been breached OR we forced a sync, but we
       # have one last test - let's make sure if sync ran, it completed
@@ -137,7 +139,8 @@ function main(){
       if [ "$DO_SYNC" -eq 1 ] && ! grep -qw "$SYNC_MARKER" "$TMP_OUTPUT"; then
         # Sync ran but did not complete successfully so lets not run scrub to
         # be safe
-        elog WARN "**WARNING** - check output of SYNC job. Could not detect marker. Not proceeding with SCRUB job."
+        elog WARN "**WARNING** - check output of SYNC job." \
+            "Could not detect marker. Not proceeding with SCRUB job."
       else
         # Everything ok - ready to run the scrub job!
         # The fuction will check if scrub delayed run is enabled and run scrub
@@ -242,7 +245,8 @@ function sanity_check() {
   elog INFO "Checking SnapRAID disks."
   if [ ! -e "$CONTENT_FILE" ]; then
     elog ERROR "**ERROR** Content file ($CONTENT_FILE) not found!"
-    elog ERROR "**ERROR** Please check the status of your disks! The script exits here due to missing file or disk..."
+    elog ERROR "**ERROR** Please check the status of your disks!" \
+        "The script exits here due to missing file or disk..."
     prepare_mail
     # Add a topline to email body
     sed_me "1s:^:##$SUBJECT \n:" "${TMP_OUTPUT}"
@@ -254,7 +258,8 @@ function sanity_check() {
   for i in "${PARITY_FILES[@]}"; do
     if [ ! -e "$i" ]; then
       elog ERROR "**ERROR** Parity file ($i) not found!"
-      elog ERROR "**ERROR** Please check the status of your disks! The script exits here due to missing file or disk..."
+      elog ERROR "**ERROR** Please check the status of your disks!" \
+          "The script exits here due to missing file or disk..."
       prepare_mail
       # Add a topline to email body
       sed_me "1s:^:##$SUBJECT \n:" "${TMP_OUTPUT}"
@@ -284,7 +289,8 @@ function get_counts() {
     send_mail < "$TMP_OUTPUT"
     exit 1;
   fi
-  elog INFO "**SUMMARY of changes - Added [$ADD_COUNT] - Deleted [$DEL_COUNT] - Moved [$MOVE_COUNT] - Copied [$COPY_COUNT] - Updated [$UPDATE_COUNT]**"
+  elog INFO "**SUMMARY of changes - Added [$ADD_COUNT] - Deleted [$DEL_COUNT]" \
+      "- Moved [$MOVE_COUNT] - Copied [$COPY_COUNT] - Updated [$UPDATE_COUNT]**"
 }
 
 function sed_me(){
@@ -303,11 +309,13 @@ function chk_del(){
       echo "There are no deleted files, that's fine."
       DO_SYNC=1
     else
-      echo "There are deleted files. The number of deleted files ($DEL_COUNT) is below the threshold of ($DEL_THRESHOLD)."
+      echo "There are deleted files. The number of deleted files" \
+          "($DEL_COUNT) is below the threshold of ($DEL_THRESHOLD)."
       DO_SYNC=1
     fi
   else
-    elog WARN "**WARNING** Deleted files ($DEL_COUNT) reached/exceeded threshold ($DEL_THRESHOLD)."
+    elog WARN "**WARNING** Deleted files ($DEL_COUNT)" \
+        "reached/exceeded threshold ($DEL_THRESHOLD)."
     CHK_FAIL=1
   fi
 }
@@ -318,11 +326,13 @@ function chk_updated(){
       echo "There are no updated files, that's fine."
       DO_SYNC=1
     else
-      echo "There are updated files. The number of updated files ($UPDATE_COUNT) is below the threshold of ($UP_THRESHOLD)."
+      echo "There are updated files. The number of updated files" \
+          "($UPDATE_COUNT) is below the threshold of ($UP_THRESHOLD)."
       DO_SYNC=1
     fi
   else
-    elog WARN "**WARNING** Updated files ($UPDATE_COUNT) reached/exceeded threshold ($UP_THRESHOLD)."
+    elog WARN "**WARNING** Updated files ($UPDATE_COUNT)" \
+        "reached/exceeded threshold ($UP_THRESHOLD)."
     CHK_FAIL=1
   fi
 }
@@ -349,7 +359,9 @@ function chk_sync_warn(){
         # If there is at least one warn count, output a message and force a
         # sync job. Do not need to remove warning marker here as it is
         # automatically removed when the sync job is run by this script
-        elog INFO "Number of threshold warning(s) ($sync_warn_count) has reached/exceeded threshold ($SYNC_WARN_THRESHOLD). Forcing a SYNC job to run."
+        elog INFO \
+            "Number of threshold warning(s) ($sync_warn_count) has reached/exceeded" \
+            "threshold ($SYNC_WARN_THRESHOLD). Forcing a SYNC job to run."
         DO_SYNC=1
       fi
     else
@@ -360,13 +372,15 @@ function chk_sync_warn(){
         elog INFO "This is the **last** warning left. **NOT** proceeding with SYNC job."
         DO_SYNC=0
       else
-        elog INFO "$((SYNC_WARN_THRESHOLD - sync_warn_count)) threshold warning(s) until the next forced sync. **NOT** proceeding with SYNC job."
+        elog INFO "$((SYNC_WARN_THRESHOLD - sync_warn_count)) threshold" \
+            "warning(s) until the next forced sync. **NOT** proceeding with SYNC job."
         DO_SYNC=0
       fi
     fi
   else
     # NO, so let's skip SYNC
-    elog INFO "Forced sync is not enabled. Check $TMP_OUTPUT for details. **NOT** proceeding with SYNC job."
+    elog INFO "Forced sync is not enabled. Check $TMP_OUTPUT for details." \
+        "**NOT** proceeding with SYNC job."
     DO_SYNC=0
   fi
 }
@@ -409,7 +423,8 @@ function chk_scrub_settings(){
       # if there is at least one warn count, output a message and force a scrub
       # job. Do not need to remove warning marker here as it is automatically
       # removed when the scrub job is run by this script
-      elog INFO "Number of delayed runs has reached/exceeded threshold ($SCRUB_DELAYED_RUN). A SCRUB job will run."
+      elog INFO "Number of delayed runs has reached/exceeded threshold" \
+          "($SCRUB_DELAYED_RUN). A SCRUB job will run."
       run_scrub
     fi
 	else
@@ -419,7 +434,8 @@ function chk_scrub_settings(){
     if [ "$scrub_count" == "$SCRUB_DELAYED_RUN" ]; then
       elog INFO "This is the **last** run left before running scrub job next time."
     else
-      elog INFO "$((SCRUB_DELAYED_RUN - scrub_count)) runs until the next scrub. **NOT** proceeding with SCRUB job."
+      elog INFO "$((SCRUB_DELAYED_RUN - scrub_count)) runs until the next" \
+          "scrub. **NOT** proceeding with SCRUB job."
     fi
 	fi
 }
@@ -542,7 +558,8 @@ function output_to_file_screen(){
 # log level and $2 is the message.
 function elog() {
   local priority; priority=$1
-  local message; message=$2
+  shift
+  local message; message=$*
   echo "$message [$(date)]"
   echo "$(date '+[%Y-%m-%d %H:%M:%S]') $priority: $message" >> "$SNAPRAID_LOG"
 }

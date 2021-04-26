@@ -86,6 +86,6 @@ SNAPRAID_CONF_LINES=$(grep -E '^[^#;]' $SNAPRAID_CONF)
 CONTENT_FILE=$(echo "$SNAPRAID_CONF_LINES" | grep snapraid.content | head -n 1 | cut -d ' ' -f2)
 
 # Build an array of parity all files...
-IFS=$'\n' PARITY_FILES=(
+PARITY_FILES=(
   $(echo "$SNAPRAID_CONF_LINES" | grep -E '^([2-6z]-)*parity' | cut -d ' ' -f2- | tr ',' '\n')
 )
