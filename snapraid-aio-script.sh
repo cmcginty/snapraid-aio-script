@@ -63,9 +63,6 @@ function main(){
   echo "----------------------------------------"
   echo "## Processing"
 
-  # Fix timestamps
-  chk_zero
-
   # run the snapraid DIFF command
   echo "### SnapRAID DIFF"
   elog INFO "DIFF Job started."
@@ -154,6 +151,8 @@ function main(){
 
   echo "----------------------------------------"
   echo "## Postprocessing"
+
+  chk_zero_timestamps
 
   # Show SnapRAID SMART info if enabled
   if [ "$SMART_LOG" -eq 1 ]; then
@@ -385,7 +384,7 @@ function chk_sync_warn(){
   fi
 }
 
-function chk_zero(){
+function chk_zero_timestamps(){
   echo "### SnapRAID TOUCH"
   elog INFO "TOUCH started."
   echo "Checking for zero sub-second files."
