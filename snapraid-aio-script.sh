@@ -9,10 +9,9 @@
 #   CONFIG VARIABLES #
 ######################
 SNAPSCRIPTVERSION="2.9.0.DEV2"
+SNAPRAIDVERSION="$(snapraid -V | sed 's/snapraid v\(.*\)by.*/\1/')"
 
-# find the current path
 CURRENT_DIR=$(dirname "${0}")
-# import the config file for this script which contain user configuration
 CONFIG_FILE=$CURRENT_DIR/script-config.sh
 # shellcheck source=script-config.sh
 source "$CONFIG_FILE"
@@ -562,8 +561,5 @@ function elog() {
   echo "$message [$(date)]"
   echo "$(date '+[%Y-%m-%d %H:%M:%S]') $priority: $message" >> "$SNAPRAID_LOG"
 }
-
-# Read SnapRAID version
-SNAPRAIDVERSION="$(snapraid -V | sed 's/snapraid v\(.*\)by.*/\1/')"
 
 main "$@"
