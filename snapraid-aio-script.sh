@@ -89,7 +89,6 @@ function main(){
 
   # Now run sync if conditions are met
   if [ "$DO_SYNC" -eq 1 ]; then
-    echo "SYNC is authorized. [$(date)]"
     mkdwn_h3 "SnapRAID SYNC"
     elog INFO "SYNC Job started."
     if [ "$PREHASH" -eq 1 ]; then
@@ -199,9 +198,8 @@ function main(){
     # check if deleted count exceeded threshold
     prepare_mail
 
-    ELAPSED="$((SECONDS / 3600))hrs $(((SECONDS / 60) % 60))min $((SECONDS % 60))sec"
     mkdwn_ruler
-    mkdwn_h2 "Total time elapsed for SnapRAID: $ELAPSED"
+    mkdwn_h2 "Total time elapsed for SnapRAID: $(elapsed)"
 
     # Add a topline to email body
     sed_me "1s:^:##$SUBJECT \n:" "${TMP_OUTPUT}"
@@ -371,7 +369,7 @@ function chk_zero_timestamps(){
   TIMESTATUS=$($SNAPRAID_BIN status | grep 'You have [1-9][0-9]* files with zero sub-second timestamp\.' | sed 's/^You have/Found/g')
   if [ -n "$TIMESTATUS" ]; then
     echo "$TIMESTATUS"
-    echo "Running TOUCH job to timestamp. [$(date)]"
+    echo "Running TOUCH job to timestamp."
     snapraid_cmd touch
   else
     echo "No zero sub-second timestamp files found."
@@ -506,11 +504,13 @@ function send_mail(){
 # Run a snapraid command; manage output redirection.
 function snapraid_cmd() {
   local args; args=("$@")
+  local start; start=$SECONDS
   mkdwn_codeblk
   $SNAPRAID_BIN "${args[@]}"
   close_output_and_wait
   output_to_file_screen
   mkdwn_codeblk
+  echo "Waited for $(elapsed $start)."
 }
 
 # Due to how process substitution and newer bash versions work, this function
@@ -541,8 +541,19 @@ function elog() {
   local priority; priority=$1
   shift
   local message; message=$*
-  echo "$message [$(date)]"
+  echo "$message"
   echo "$(date '+[%Y-%m-%d %H:%M:%S]') $priority: $message" >> "$SNAPRAID_LOG"
+}
+
+# Print the elapsed time since $start (default 0)
+function elapsed() {
+  local start; start=${1:-0}
+  local elapsed=$((SECONDS - start))
+  if ((elapsed > 0)); then
+    echo "$((elapsed / 3600))hrs $(((elapsed / 60) % 60))min $((elapsed % 60))sec"
+  else
+    echo "a jiffy"
+  fi
 }
 
 # Common markdown formatting features.
