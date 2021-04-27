@@ -1,4 +1,6 @@
 #!/bin/bash
+set -o pipefail
+
 ########################################################################
 #
 #   Project page: https://github.com/auanasgheps/snapraid-aio-script
@@ -37,8 +39,8 @@ function main(){
   elog INFO "Running SnapRAID version $SNAPRAIDVERSION"
   elog INFO "SnapRAID AIO Script version $SNAPSCRIPTVERSION"
 
-  echo "----------------------------------------"
-  echo "## Preprocessing"
+  mkdwn_ruler
+  mkdwn_h2 "Preprocessing"
 
   # Check if script configuration file has been found
   if [ ! -f "$CONFIG_FILE" ]; then
@@ -59,17 +61,12 @@ function main(){
 
   sanity_check
 
-  echo "----------------------------------------"
-  echo "## Processing"
+  mkdwn_ruler
+  mkdwn_h2 "Processing"
 
-  # run the snapraid DIFF command
-  echo "### SnapRAID DIFF"
+  mkdwn_h3 "SnapRAID DIFF"
   elog INFO "DIFF Job started."
-  echo "\`\`\`"
-  $SNAPRAID_BIN diff
-  close_output_and_wait
-  output_to_file_screen
-  echo "\`\`\`"
+  snapraid_cmd diff
   elog INFO "DIFF finished."
   JOBS_DONE="DIFF"
 
@@ -93,17 +90,13 @@ function main(){
   # Now run sync if conditions are met
   if [ "$DO_SYNC" -eq 1 ]; then
     echo "SYNC is authorized. [$(date)]"
-    echo "### SnapRAID SYNC"
+    mkdwn_h3 "SnapRAID SYNC"
     elog INFO "SYNC Job started."
-    echo "\`\`\`"
     if [ "$PREHASH" -eq 1 ]; then
-      $SNAPRAID_BIN sync -h -q
+      snapraid_cmd sync -h -q
     else
-      $SNAPRAID_BIN sync -q
+      snapraid_cmd sync -q
     fi
-    close_output_and_wait
-    output_to_file_screen
-    echo "\`\`\`"
     elog INFO "SYNC finished."
     JOBS_DONE="$JOBS_DONE + SYNC"
     # insert SYNC marker to 'Everything OK' or 'Nothing to do' string to
@@ -120,7 +113,7 @@ function main(){
   fi
 
   # Moving onto scrub now. Check if user has enabled scrub
-  echo "### SnapRAID SCRUB"
+  mkdwn_h3 "SnapRAID SCRUB"
   if [ "$SCRUB_PERCENT" -gt 0 ]; then
     # YES, first let's check if delete threshold has been breached and we have
     # not forced a sync.
@@ -148,44 +141,32 @@ function main(){
     elog INFO "Scrub job is not enabled. Not running SCRUB job."
   fi
 
-  echo "----------------------------------------"
-  echo "## Postprocessing"
+  mkdwn_ruler
+  mkdwn_h2 "Postprocessing"
 
   chk_zero_timestamps
 
   # Show SnapRAID SMART info if enabled
   if [ "$SMART_LOG" -eq 1 ]; then
-    echo "### SnapRAID SMART"
+    mkdwn_h3 "SnapRAID SMART"
     elog INFO "SMART Job started."
-    echo "\`\`\`"
-    $SNAPRAID_BIN smart
-    close_output_and_wait
-    output_to_file_screen
-    echo "\`\`\`"
+    snapraid_cmd smart
     elog INFO "SMART finished."
   fi
 
   # Show SnapRAID Status information if enabled
   if [ "$SNAP_STATUS" -eq 1 ]; then
-    echo "### SnapRAID STATUS"
+    mkdwn_h3 "SnapRAID STATUS"
     elog INFO "STATUS Job started."
-    echo "\`\`\`"
-    $SNAPRAID_BIN status
-    close_output_and_wait
-    output_to_file_screen
-    echo "\`\`\`"
+    snapraid_cmd status
     elog INFO "STATUS finished."
   fi
 
   # Spinning down disks (Method 1: snapraid - preferred)
   if [ "$SPINDOWN" -eq 1 ]; then
-    echo "### SnapRAID SPINDOWN"
+    mkdwn_h3 "SnapRAID SPINDOWN"
     elog INFO "SPINDOWN Job started."
-    echo "\`\`\`"
-    $SNAPRAID_BIN down
-    close_output_and_wait
-    output_to_file_screen
-    echo "\`\`\`"
+    snapraid_cmd down
     elog INFO "SPINDOWN finished."
   fi
 
@@ -219,8 +200,8 @@ function main(){
     prepare_mail
 
     ELAPSED="$((SECONDS / 3600))hrs $(((SECONDS / 60) % 60))min $((SECONDS % 60))sec"
-    echo "----------------------------------------"
-    echo "## Total time elapsed for SnapRAID: $ELAPSED"
+    mkdwn_ruler
+    mkdwn_h2 "Total time elapsed for SnapRAID: $ELAPSED"
 
     # Add a topline to email body
     sed_me "1s:^:##$SUBJECT \n:" "${TMP_OUTPUT}"
@@ -384,18 +365,14 @@ function chk_sync_warn(){
 }
 
 function chk_zero_timestamps(){
-  echo "### SnapRAID TOUCH"
+  mkdwn_h3 "SnapRAID TOUCH"
   elog INFO "TOUCH started."
   echo "Checking for zero sub-second files."
   TIMESTATUS=$($SNAPRAID_BIN status | grep 'You have [1-9][0-9]* files with zero sub-second timestamp\.' | sed 's/^You have/Found/g')
   if [ -n "$TIMESTATUS" ]; then
     echo "$TIMESTATUS"
     echo "Running TOUCH job to timestamp. [$(date)]"
-    echo "\`\`\`"
-    $SNAPRAID_BIN touch
-    close_output_and_wait
-    output_to_file_screen
-    echo "\`\`\`"
+    snapraid_cmd touch
   else
     echo "No zero sub-second timestamp files found."
   fi
@@ -440,11 +417,7 @@ function chk_scrub_settings(){
 
 function run_scrub(){
   elog INFO "SCRUB Job started."
-  echo "\`\`\`"
-  $SNAPRAID_BIN scrub -p $SCRUB_PERCENT -o $SCRUB_AGE -q
-  close_output_and_wait
-  output_to_file_screen
-  echo "\`\`\`"
+  snapraid_cmd scrub -p $SCRUB_PERCENT -o $SCRUB_AGE -q
   elog INFO "SCRUB finished."
   JOBS_DONE="$JOBS_DONE + SCRUB"
   # insert SCRUB marker to 'Everything OK' or 'Nothing to do' string to
@@ -530,6 +503,16 @@ function send_mail(){
       sed 's/<code>/<pre>/;s%</code>%</pre>%')
 }
 
+# Run a snapraid command; manage output redirection.
+function snapraid_cmd() {
+  local args; args=("$@")
+  mkdwn_codeblk
+  $SNAPRAID_BIN "${args[@]}"
+  close_output_and_wait
+  output_to_file_screen
+  mkdwn_codeblk
+}
+
 # Due to how process substitution and newer bash versions work, this function
 # stops the output stream which allows wait stops wait from hanging on the tee
 # process. If we do not do this and use normal 'wait' the processes will wait
@@ -561,5 +544,11 @@ function elog() {
   echo "$message [$(date)]"
   echo "$(date '+[%Y-%m-%d %H:%M:%S]') $priority: $message" >> "$SNAPRAID_LOG"
 }
+
+# Common markdown formatting features.
+function mkdwn_ruler() { echo "----"; }
+function mkdwn_codeblk() { echo "\`\`\`"; }
+function mkdwn_h2() { echo "## $*"; }
+function mkdwn_h3() { echo "### $*"; }
 
 main "$@"
