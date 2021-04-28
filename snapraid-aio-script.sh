@@ -142,54 +142,10 @@ function main(){
 
   mkdwn_ruler
   mkdwn_h2 "Postprocessing"
-
-  chk_zero_timestamps
-
-  # Show SnapRAID SMART info if enabled
-  if [ "$SMART_LOG" -eq 1 ]; then
-    mkdwn_h3 "SnapRAID SMART"
-    elog INFO "SMART Job started."
-    snapraid_cmd smart
-    elog INFO "SMART finished."
-  fi
-
-  # Show SnapRAID Status information if enabled
-  if [ "$SNAP_STATUS" -eq 1 ]; then
-    mkdwn_h3 "SnapRAID STATUS"
-    elog INFO "STATUS Job started."
-    snapraid_cmd status
-    elog INFO "STATUS finished."
-  fi
-
-  # Spinning down disks (Method 1: snapraid - preferred)
-  if [ "$SPINDOWN" -eq 1 ]; then
-    mkdwn_h3 "SnapRAID SPINDOWN"
-    elog INFO "SPINDOWN Job started."
-    snapraid_cmd down
-    elog INFO "SPINDOWN finished."
-  fi
-
-  # Spinning down disks (Method 2: hdparm - spins down all rotational devices)
-  # if [ $SPINDOWN -eq 1 ]; then
-  # for DRIVE in `lsblk -d -o name | tail -n +2`
-  #   do
-  #     if [[ `smartctl -a /dev/$DRIVE | grep 'Rotation Rate' | grep rpm` ]]; then
-  #       hdparm -Y /dev/$DRIVE
-  #     fi
-  #   done
-  # fi
-
-  # Spinning down disks (Method 3: hd-idle - spins down all rotational devices)
-  # if [ $SPINDOWN -eq 1 ]; then
-  # for DRIVE in `lsblk -d -o name | tail -n +2`
-  #   do
-  #     if [[ `smartctl -a /dev/$DRIVE | grep 'Rotation Rate' | grep rpm` ]]; then
-  #       echo "spinning down /dev/$DRIVE"
-  #       hd-idle -t /dev/$DRIVE
-  #     fi
-  #   done
-  # fi
-
+  run_touch
+  ((SMART_LOG)) && run_smart
+  ((SMART_STATUS)) && run_status
+  ((SMART_SPINDDOWN)) && run_spindown
   elog INFO "All jobs ended."
 
   # all jobs done, let's send output to user if configured
@@ -362,21 +318,6 @@ function chk_sync_warn(){
   fi
 }
 
-function chk_zero_timestamps(){
-  mkdwn_h3 "SnapRAID TOUCH"
-  elog INFO "TOUCH started."
-  echo "Checking for zero sub-second files."
-  TIMESTATUS=$($SNAPRAID_BIN status | grep 'You have [1-9][0-9]* files with zero sub-second timestamp\.' | sed 's/^You have/Found/g')
-  if [ -n "$TIMESTATUS" ]; then
-    echo "$TIMESTATUS"
-    echo "Running TOUCH job to timestamp."
-    snapraid_cmd touch
-  else
-    echo "No zero sub-second timestamp files found."
-  fi
-  elog INFO "TOUCH finished."
-}
-
 function chk_scrub_settings(){
 	if [ "$SCRUB_DELAYED_RUN" -gt 0 ]; then
     elog INFO "Delayed scrub is enabled."
@@ -429,6 +370,57 @@ function run_scrub(){
   if [ -e "$SCRUB_COUNT_FILE" ]; then
     rm "$SCRUB_COUNT_FILE"
   fi
+}
+
+function run_touch(){
+  mkdwn_h3 "SnapRAID TOUCH"
+  elog INFO "TOUCH started."
+  echo "Checking for zero sub-second files."
+  TIMESTATUS=$($SNAPRAID_BIN status | grep 'You have [1-9][0-9]* files with zero sub-second timestamp\.' | sed 's/^You have/Found/g')
+  if [ -n "$TIMESTATUS" ]; then
+    echo "$TIMESTATUS"
+    echo "Running TOUCH job to timestamp."
+    snapraid_cmd touch
+  else
+    echo "No zero sub-second timestamp files found."
+  fi
+  elog INFO "TOUCH finished."
+}
+
+function run_smart() {
+  mkdwn_h3 "SnapRAID SMART"
+  snapraid_cmd smart
+}
+
+function run_status() {
+  mkdwn_h3 "SnapRAID STATUS"
+  snapraid_cmd status
+}
+
+function run_spindown() {
+  mkdwn_h3 "SnapRAID SPINDOWN"
+  snapraid_cmd down
+
+  # Spinning down disks (Method 2: hdparm - spins down all rotational devices)
+  # if [ $SPINDOWN -eq 1 ]; then
+  # for DRIVE in `lsblk -d -o name | tail -n +2`
+  #   do
+  #     if [[ `smartctl -a /dev/$DRIVE | grep 'Rotation Rate' | grep rpm` ]]; then
+  #       hdparm -Y /dev/$DRIVE
+  #     fi
+  #   done
+  # fi
+
+  # Spinning down disks (Method 3: hd-idle - spins down all rotational devices)
+  # if [ $SPINDOWN -eq 1 ]; then
+  # for DRIVE in `lsblk -d -o name | tail -n +2`
+  #   do
+  #     if [[ `smartctl -a /dev/$DRIVE | grep 'Rotation Rate' | grep rpm` ]]; then
+  #       echo "spinning down /dev/$DRIVE"
+  #       hd-idle -t /dev/$DRIVE
+  #     fi
+  #   done
+  # fi
 }
 
 function prepare_mail() {
