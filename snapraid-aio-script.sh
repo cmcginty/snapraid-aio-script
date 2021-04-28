@@ -43,7 +43,7 @@ function main(){
   mkdwn_h2 "Preprocessing"
 
   # Check if script configuration file has been found
-  if [ ! -f "$CONFIG_FILE" ]; then
+  if [[ ! -f "$CONFIG_FILE" ]]; then
     elog WARN "Script configuration file not found! The script cannot be run!" \
         "Please check and try again!"
     exit 1;
@@ -52,7 +52,7 @@ function main(){
   fi
 
   # install markdown if not present
-  if [ "$(dpkg-query -W -f='${Status}' python-markdown 2>/dev/null | grep -c "ok installed")" -eq 0 ]; then
+  if ! (dpkg-query -W -f='${Status}' python-markdown | grep -q "ok installed") 2>/dev/null; then
     elog WARN "**Markdown has not been found and will be installed.**"
     # super silent and secret install command
     export DEBIAN_FRONTEND=noninteractive
@@ -88,10 +88,10 @@ function main(){
   fi
 
   # Now run sync if conditions are met
-  if [ "$DO_SYNC" -eq 1 ]; then
+  if ((DO_SYNC)); then
     mkdwn_h3 "SnapRAID SYNC"
     elog INFO "SYNC Job started."
-    if [ "$PREHASH" -eq 1 ]; then
+    if ((PREHASH)); then
       snapraid_cmd sync -h -q
     else
       snapraid_cmd sync -q
@@ -106,17 +106,17 @@ function main(){
     # Remove any warning flags if set previously. This is done in this step to
     # take care of scenarios when user has manually synced or restored deleted
     # files and we will have missed it in the checks above.
-    if [ -e "$SYNC_WARN_FILE" ]; then
+    if [[ -e "$SYNC_WARN_FILE" ]]; then
       rm "$SYNC_WARN_FILE"
     fi
   fi
 
   # Moving onto scrub now. Check if user has enabled scrub
   mkdwn_h3 "SnapRAID SCRUB"
-  if [ "$SCRUB_PERCENT" -gt 0 ]; then
+  if ((SCRUB_PERCENT > 0)); then
     # YES, first let's check if delete threshold has been breached and we have
     # not forced a sync.
-    if [ "$CHK_FAIL" -eq 1 ] && [ "$DO_SYNC" -eq 0 ]; then
+    if ((CHK_FAIL && !DO_SYNC)); then
       # YES, parity is out of sync so let's not run scrub job
       elog INFO "Scrub job is cancelled as parity info is out of sync" \
           "(deleted or changed files threshold has been breached)."
@@ -124,7 +124,7 @@ function main(){
       # NO, delete threshold has not been breached OR we forced a sync, but we
       # have one last test - let's make sure if sync ran, it completed
       # successfully (by checking for the marker text in the output).
-      if [ "$DO_SYNC" -eq 1 ] && ! grep -qw "$SYNC_MARKER" "$TMP_OUTPUT"; then
+      if ((DO_SYNC)) && ! grep -qw "$SYNC_MARKER" "$TMP_OUTPUT"; then
         # Sync ran but did not complete successfully so lets not run scrub to
         # be safe
         elog WARN "**WARNING** - check output of SYNC job." \
@@ -159,7 +159,7 @@ function main(){
 
     # Add a topline to email body
     sed_me "1s:^:##$SUBJECT \n:" "${TMP_OUTPUT}"
-    if [ $VERBOSITY -eq 1 ]; then
+    if ((VERBOSITY)); then
       send_mail < "$TMP_OUTPUT"
     else
       trim_log < "$TMP_OUTPUT" | send_mail
@@ -176,7 +176,7 @@ function main(){
 # Sanity check first to make sure we can access the content and parity files.
 function sanity_check() {
   elog INFO "Checking SnapRAID disks."
-  if [ ! -e "$CONTENT_FILE" ]; then
+  if [[ ! -e "$CONTENT_FILE" ]]; then
     elog ERROR "**ERROR** Content file ($CONTENT_FILE) not found!"
     elog ERROR "**ERROR** Please check the status of your disks!" \
         "The script exits here due to missing file or disk..."
@@ -189,7 +189,7 @@ function sanity_check() {
 
   elog INFO "Testing that all parity files are present."
   for i in "${PARITY_FILES[@]}"; do
-    if [ ! -e "$i" ]; then
+    if [[ ! -e "$i" ]]; then
       elog ERROR "**ERROR** Parity file ($i) not found!"
       elog ERROR "**ERROR** Please check the status of your disks!" \
           "The script exits here due to missing file or disk..."
@@ -237,8 +237,8 @@ function sed_me(){
 }
 
 function chk_del(){
-  if [ "$DEL_COUNT" -lt "$DEL_THRESHOLD" ]; then
-    if [ "$DEL_COUNT" -eq 0 ]; then
+  if ((DEL_COUNT < DEL_THRESHOLD)); then
+    if ((DEL_COUNT == 0)); then
       echo "There are no deleted files, that's fine."
       DO_SYNC=1
     else
@@ -254,8 +254,8 @@ function chk_del(){
 }
 
 function chk_updated(){
-  if [ "$UPDATE_COUNT" -lt "$UP_THRESHOLD" ]; then
-    if [ "$UPDATE_COUNT" -eq 0 ]; then
+  if ((UPDATE_COUNT < UP_THRESHOLD)); then
+    if ((UPDATE_COUNT == 0)); then
       echo "There are no updated files, that's fine."
       DO_SYNC=1
     else
@@ -271,8 +271,8 @@ function chk_updated(){
 }
 
 function chk_sync_warn(){
-  if [ "$SYNC_WARN_THRESHOLD" -gt -1 ]; then
-    if [ "$SYNC_WARN_THRESHOLD" -eq 0 ]; then
+  if ((SYNC_WARN_THRESHOLD > -1)); then
+    if ((SYNC_WARN_THRESHOLD == 0)); then
       elog INFO "Forced sync is enabled."
     else
       elog INFO "Sync after threshold warning(s) is enabled."
@@ -283,10 +283,10 @@ function chk_sync_warn(){
     # zero if file does not exist or did not contain a number
     : "${sync_warn_count:=0}"
 
-    if [ "$sync_warn_count" -ge "$SYNC_WARN_THRESHOLD" ]; then
+    if ((sync_warn_count >= SYNC_WARN_THRESHOLD)); then
       # Force a sync. If the warn count is zero it means the sync was already
       # forced, do not output a dumb message and continue with the sync job.
-      if [ "$sync_warn_count" -eq 0 ]; then
+      if ((sync_warn_count == 0)); then
         DO_SYNC=1
       else
         # If there is at least one warn count, output a message and force a
@@ -301,7 +301,7 @@ function chk_sync_warn(){
       # NO, so let's increment the warning count and skip the sync job
       ((sync_warn_count += 1))
       echo "$sync_warn_count" > "$SYNC_WARN_FILE"
-      if [ "$sync_warn_count" == "$SYNC_WARN_THRESHOLD" ]; then
+      if ((sync_warn_count == SYNC_WARN_THRESHOLD)); then
         elog INFO "This is the **last** warning left. **NOT** proceeding with SYNC job."
         DO_SYNC=0
       else
@@ -319,19 +319,16 @@ function chk_sync_warn(){
 }
 
 function chk_scrub_settings(){
-	if [ "$SCRUB_DELAYED_RUN" -gt 0 ]; then
-    elog INFO "Delayed scrub is enabled."
-  fi
-
+	((SCRUB_DELAYED_RUN)) && elog INFO "Delayed scrub is enabled."
 	local scrub_count
   scrub_count=$(sed '/^[0-9]*$/!d' "$SCRUB_COUNT_FILE" 2>/dev/null)
   # zero if file does not exist or did not contain a number
   : "${scrub_count:=0}"
 
-	if [ "$scrub_count" -ge "$SCRUB_DELAYED_RUN" ]; then
+	if ((scrub_count >= SCRUB_DELAYED_RUN)); then
     # Run a scrub job. if the warn count is zero it means the scrub was already
     # forced, do not output a dumb message and continue with the scrub job.
-    if [ "$scrub_count" -eq 0 ]; then
+    if ((scrub_count == 0)); then
       run_scrub
     else
       # if there is at least one warn count, output a message and force a scrub
@@ -345,7 +342,7 @@ function chk_scrub_settings(){
     # NO, so let's increment the warning count and skip the scrub job
     ((scrub_count += 1))
     echo "$scrub_count" > "$SCRUB_COUNT_FILE"
-    if [ "$scrub_count" == "$SCRUB_DELAYED_RUN" ]; then
+    if ((scrub_count == SCRUB_DELAYED_RUN)); then
       elog INFO "This is the **last** run left before running scrub job next time."
     else
       elog INFO "$((SCRUB_DELAYED_RUN - scrub_count)) runs until the next" \
@@ -367,7 +364,7 @@ function run_scrub(){
   # Remove the warning flag if set previously. This is done now to
   # take care of scenarios when user has manually synced or restored
   # deleted files and we will have missed it in the checks above.
-  if [ -e "$SCRUB_COUNT_FILE" ]; then
+  if [[ -e "$SCRUB_COUNT_FILE" ]]; then
     rm "$SCRUB_COUNT_FILE"
   fi
 }
@@ -377,7 +374,7 @@ function run_touch(){
   elog INFO "TOUCH started."
   echo "Checking for zero sub-second files."
   TIMESTATUS=$($SNAPRAID_BIN status | grep 'You have [1-9][0-9]* files with zero sub-second timestamp\.' | sed 's/^You have/Found/g')
-  if [ -n "$TIMESTATUS" ]; then
+  if [[ -n "$TIMESTATUS" ]]; then
     echo "$TIMESTATUS"
     echo "Running TOUCH job to timestamp."
     snapraid_cmd touch
@@ -424,35 +421,30 @@ function run_spindown() {
 }
 
 function prepare_mail() {
-  if [ $CHK_FAIL -eq 1 ]; then
-    if [ "$DEL_COUNT" -ge "$DEL_THRESHOLD" ] && [ "$DO_SYNC" -eq 0 ]; then
+  if ((CHK_FAIL)); then
+    if ((DEL_COUNT >= DEL_THRESHOLD && !DO_SYNC)); then
       MSG="Deleted files ($DEL_COUNT) / ($DEL_THRESHOLD) violation"
     fi
-
-    if [ "$DEL_COUNT" -ge "$DEL_THRESHOLD" ] && [ "$DO_SYNC" -eq 1 ]; then
+    if ((DEL_COUNT >= DEL_THRESHOLD && DO_SYNC)); then
       MSG="Forced sync with deleted files ($DEL_COUNT) / ($DEL_THRESHOLD) violation"
     fi
-
-    if [ "$UPDATE_COUNT" -ge "$UP_THRESHOLD" ] && [ "$DO_SYNC" -eq 0 ]; then
+    if ((UPDATE_COUNT >= UP_THRESHOLD && !DO_SYNC)); then
       MSG="Changed files ($UPDATE_COUNT) / ($UP_THRESHOLD) violation"
     fi
-
-    if [ "$UPDATE_COUNT" -ge "$UP_THRESHOLD" ] && [ "$DO_SYNC" -eq 1 ]; then
+    if ((UPDATE_COUNT >= UP_THRESHOLD && DO_SYNC)); then
       MSG="Forced sync with changed files ($UPDATE_COUNT) / ($UP_THRESHOLD) violation"
     fi
-
-    if [ "$DEL_COUNT" -ge  "$DEL_THRESHOLD" ] && [ "$UPDATE_COUNT" -ge "$UP_THRESHOLD" ] && [ "$DO_SYNC" -eq 0 ]; then
+    if ((DEL_COUNT >= DEL_THRESHOLD && UPDATE_COUNT >= UP_THRESHOLD && !DO_SYNC)); then
       MSG="Multiple violations - Deleted files ($DEL_COUNT) / ($DEL_THRESHOLD) and changed files ($UPDATE_COUNT) / ($UP_THRESHOLD)"
     fi
-
-    if [ "$DEL_COUNT" -ge  "$DEL_THRESHOLD" ] && [ "$UPDATE_COUNT" -ge "$UP_THRESHOLD" ] && [ "$DO_SYNC" -eq 1 ]; then
+    if ((DEL_COUNT >= DEL_THRESHOLD && UPDATE_COUNT >= UP_THRESHOLD && DO_SYNC)); then
       MSG="Sync forced with multiple violations - Deleted files ($DEL_COUNT) / ($DEL_THRESHOLD) and changed files ($UPDATE_COUNT) / ($UP_THRESHOLD)"
     fi
     SUBJECT="[WARNING] $MSG $EMAIL_SUBJECT_PREFIX"
-  elif [ -z "${JOBS_DONE##*"SYNC"*}" ] && ! grep -qw "$SYNC_MARKER" "$TMP_OUTPUT"; then
+  elif [[ -z "${JOBS_DONE##*"SYNC"*}" ]] && ! grep -qw "$SYNC_MARKER" "$TMP_OUTPUT"; then
     # Sync ran but did not complete successfully so lets warn the user
     SUBJECT="[WARNING] SYNC job ran but did not complete successfully $EMAIL_SUBJECT_PREFIX"
-  elif [ -z "${JOBS_DONE##*"SCRUB"*}" ] && ! grep -qw "$SCRUB_MARKER" "$TMP_OUTPUT"; then
+  elif [[ -z "${JOBS_DONE##*"SCRUB"*}" ]] && ! grep -qw "$SCRUB_MARKER" "$TMP_OUTPUT"; then
     # Scrub ran but did not complete successfully so lets warn the user
     SUBJECT="[WARNING] SCRUB job ran but did not complete successfully $EMAIL_SUBJECT_PREFIX"
   else
@@ -474,7 +466,7 @@ function trim_log(){
 
 # Process and mail the email body read from stdin.
 function send_mail(){
-  if [ -z "$EMAIL_ADDRESS" ]; then
+  if [[ -z "$EMAIL_ADDRESS" ]]; then
     return
   fi
   local body; body=$(cat)
@@ -514,7 +506,7 @@ function snapraid_cmd() {
 function close_output_and_wait(){
   exec >& "$OUT" 2>& "$ERROR"
   CHILD_PID=$(pgrep -P $$)
-  if [ -n "$CHILD_PID" ]; then
+  if [[ -n "$CHILD_PID" ]]; then
     wait "$CHILD_PID"
   fi
 }
