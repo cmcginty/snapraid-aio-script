@@ -42,50 +42,15 @@ function main(){
   mkdwn_ruler
   mkdwn_h2 "Preprocessing"
 
-  # Check if script configuration file has been found
-  if [[ ! -f "$CONFIG_FILE" ]]; then
-    elog WARN "Script configuration file not found! The script cannot be run!" \
-        "Please check and try again!"
-    exit 1;
-  else
-    elog INFO "Configuration file found! Proceeding."
-  fi
-
-  # install markdown if not present
-  if ! (dpkg-query -W -f='${Status}' python-markdown | grep -q "ok installed") 2>/dev/null; then
-    elog WARN "**Markdown has not been found and will be installed.**"
-    # super silent and secret install command
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get install -qq -o=Dpkg::Use-Pty=0 python-markdown;
-  fi
-
+  find_config
+  install_markdown
   sanity_check
 
   mkdwn_ruler
   mkdwn_h2 "Processing"
 
-  mkdwn_h3 "SnapRAID DIFF"
-  elog INFO "DIFF Job started."
-  snapraid_cmd diff
-  elog INFO "DIFF finished."
-  JOBS_DONE="DIFF"
-
-  # Get number of deleted, updated, and modified files...
-  get_counts
-
-  # Without changes, the SYNC can be skipped.
-  if (((DEL_COUNT + ADD_COUNT + MOVE_COUNT + COPY_COUNT + UPDATE_COUNT) == 0)); then
-    elog INFO "No change detected. Not running SYNC job."
-    DO_SYNC=0
-  else
-    chk_del
-    if ((CHK_FAIL == 0)); then
-      chk_updated
-    else
-      # TODO: Add support for 'chk_updated' failures.
-      chk_sync_warn
-    fi
-  fi
+  run_diff
+  skip_sync_if_no_changes
 
   # Now run sync if conditions are met
   if ((DO_SYNC)); then
@@ -173,6 +138,24 @@ function main(){
 # FUNCTIONS & METHODS #
 #######################
 
+function find_config() {
+  if [[ ! -f "$CONFIG_FILE" ]]; then
+    elog WARN "Script configuration file not found! The script cannot be run!" \
+        "Please check and try again!"
+    exit 1;
+  fi
+  elog INFO "Configuration file found! Proceeding."
+}
+
+function install_markdown() {
+  if ! (dpkg-query -W -f='${Status}' python-markdown | grep -q "ok installed") 2>/dev/null; then
+    elog WARN "**Markdown has not been found and will be installed.**"
+    # super silent and secret install command
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get install -qq -o=Dpkg::Use-Pty=0 python-markdown;
+  fi
+}
+
 # Sanity check first to make sure we can access the content and parity files.
 function sanity_check() {
   elog INFO "Checking SnapRAID disks."
@@ -203,18 +186,24 @@ function sanity_check() {
   echo "All parity files found. Continuing..."
 }
 
-function get_counts() {
-  # EQ_COUNT=$(grep -w '^ \{1,\}[0-9]* equal' $TMP_OUTPUT | sed 's/^ *//g' | cut -d ' ' -f1)
-  ADD_COUNT=$(grep -w '^ \{1,\}[0-9]* added' "$TMP_OUTPUT" | sed 's/^ *//g' | cut -d ' ' -f1)
-  DEL_COUNT=$(grep -w '^ \{1,\}[0-9]* removed' "$TMP_OUTPUT" | sed 's/^ *//g' | cut -d ' ' -f1)
-  UPDATE_COUNT=$(grep -w '^ \{1,\}[0-9]* updated' "$TMP_OUTPUT" | sed 's/^ *//g' | cut -d ' ' -f1)
-  MOVE_COUNT=$(grep -w '^ \{1,\}[0-9]* moved' "$TMP_OUTPUT" | sed 's/^ *//g' | cut -d ' ' -f1)
-  COPY_COUNT=$(grep -w '^ \{1,\}[0-9]* copied' "$TMP_OUTPUT" | sed 's/^ *//g' | cut -d ' ' -f1)
-  # REST_COUNT=$(grep -w '^ \{1,\}[0-9]* restored' $TMP_OUTPUT | sed 's/^ *//g' | cut -d ' ' -f1)
+function run_diff(){
+  mkdwn_h3 "SnapRAID DIFF"
+  elog INFO "DIFF Job started."
+  snapraid_cmd diff
+  elog INFO "DIFF finished."
+  JOBS_DONE="DIFF"
+}
+
+function skip_sync_if_no_changes() {
+  DEL_COUNT=$(get_diff_count "removed")
+  UPDATE_COUNT=$(get_diff_count "updated")
+  local add_count; add_count=$(get_diff_count "added")
+  local move_count; move_count=$(get_diff_count "moved")
+  local copy_count; copy_count=$(get_diff_count "copied")
 
   # Sanity check to all counts from the output of the DIFF job.
-  if [[ -z "$DEL_COUNT" || -z "$ADD_COUNT" || -z "$MOVE_COUNT" ||
-        -z "$COPY_COUNT" || -z "$UPDATE_COUNT" ]]; then
+  if [[ -z "$DEL_COUNT" || -z "$add_count" || -z "$move_count" ||
+        -z "$copy_count" || -z "$UPDATE_COUNT" ]]; then
     # Failed to get one or more of the count values, report to user and exit
     # with error code.
     elog ERROR "**ERROR** Failed to get one or more count values. Unable to proceed."
@@ -222,8 +211,27 @@ function get_counts() {
     send_mail < "$TMP_OUTPUT"
     exit 1;
   fi
-  elog INFO "**SUMMARY of changes - Added [$ADD_COUNT] - Deleted [$DEL_COUNT]" \
-      "- Moved [$MOVE_COUNT] - Copied [$COPY_COUNT] - Updated [$UPDATE_COUNT]**"
+  elog INFO "**SUMMARY of changes - Added [$add_count] - Deleted [$DEL_COUNT]" \
+      "- Moved [$move_count] - Copied [$copy_count] - Updated [$UPDATE_COUNT]**"
+
+  # Without changes, the SYNC can be skipped.
+  if (((DEL_COUNT + add_count + move_count + copy_count + UPDATE_COUNT) == 0)); then
+    elog INFO "No change detected. Not running SYNC job."
+    DO_SYNC=0
+    return
+  fi
+
+  chk_del "$DEL_COUNT"
+  ((!CHK_FAIL)) && chk_updated "$UPDATE_COUNT"
+  if ((CHK_FAIL)); then
+    chk_sync_warn
+  fi
+}
+
+function get_diff_count(){
+  local count_name; count_name=$1
+  grep -w '^ \{1,\}[0-9]* '"$count_name" "$TMP_OUTPUT" |
+    sed 's/^ *//g' | cut -d ' ' -f1
 }
 
 function sed_me(){
@@ -237,37 +245,37 @@ function sed_me(){
 }
 
 function chk_del(){
-  if ((DEL_COUNT < DEL_THRESHOLD)); then
-    if ((DEL_COUNT == 0)); then
-      echo "There are no deleted files, that's fine."
-      DO_SYNC=1
-    else
-      echo "There are deleted files. The number of deleted files" \
-          "($DEL_COUNT) is below the threshold of ($DEL_THRESHOLD)."
-      DO_SYNC=1
-    fi
-  else
-    elog WARN "**WARNING** Deleted files ($DEL_COUNT)" \
+  local del_count; del_count=$1
+  if ((del_count >= DEL_THRESHOLD)); then
+    elog WARN "**WARNING** Deleted files ($del_count)" \
         "reached/exceeded threshold ($DEL_THRESHOLD)."
     CHK_FAIL=1
+    return
   fi
+  if ((del_count == 0)); then
+    echo "There are no deleted files, that's fine."
+  else
+    echo "There are deleted files. The number of deleted files" \
+        "($del_count) is below the threshold of ($DEL_THRESHOLD)."
+  fi
+  DO_SYNC=1
 }
 
 function chk_updated(){
-  if ((UPDATE_COUNT < UP_THRESHOLD)); then
-    if ((UPDATE_COUNT == 0)); then
-      echo "There are no updated files, that's fine."
-      DO_SYNC=1
-    else
-      echo "There are updated files. The number of updated files" \
-          "($UPDATE_COUNT) is below the threshold of ($UP_THRESHOLD)."
-      DO_SYNC=1
-    fi
-  else
-    elog WARN "**WARNING** Updated files ($UPDATE_COUNT)" \
+  local update_count; update_count=$1
+  if ((update_count >= UP_THRESHOLD)); then
+    elog WARN "**WARNING** Updated files ($update_count)" \
         "reached/exceeded threshold ($UP_THRESHOLD)."
     CHK_FAIL=1
+    return
   fi
+  if ((update_count == 0)); then
+    echo "There are no updated files, that's fine."
+  else
+    echo "There are updated files. The number of updated files" \
+        "($update_count) is below the threshold of ($UP_THRESHOLD)."
+  fi
+  DO_SYNC=1
 }
 
 function chk_sync_warn(){
