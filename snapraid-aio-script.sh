@@ -534,8 +534,7 @@ function output_to_file_screen(){
 # log level and $2 is the message.
 function elog() {
   local priority; priority=$1
-  shift
-  local message; message=$*
+  local message; message=$2
   echo "$message"
   echo "$(date '+[%Y-%m-%d %H:%M:%S]') $priority: $message" >> "$SNAPRAID_LOG"
 }
