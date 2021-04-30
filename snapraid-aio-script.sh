@@ -50,10 +50,10 @@ function main(){
   mkdwn_h2 "Processing"
 
   run_diff
-  skip_sync_if_no_changes
 
-  # Now run sync if conditions are met
-  if ((DO_SYNC)); then
+  # Run sync if conditions are met.
+  if is_sync_allowed; then
+    DO_SYNC=1
     mkdwn_h3 "SnapRAID SYNC"
     elog INFO "SYNC Job started."
     if ((PREHASH)); then
@@ -81,9 +81,9 @@ function main(){
   if ((SCRUB_PERCENT > 0)); then
     # YES, first let's check if delete threshold has been breached and we have
     # not forced a sync.
-    if ((CHK_FAIL && !DO_SYNC)); then
+    if ((!DO_SYNC)); then
       # YES, parity is out of sync so let's not run scrub job
-      elog INFO "Scrub job is cancelled as parity info is out of sync" \
+      elog INFO "Scrub job is cancelled as parity info is out of sync"\
           "(deleted or changed files threshold has been breached)."
     else
       # NO, delete threshold has not been breached OR we forced a sync, but we
@@ -92,7 +92,7 @@ function main(){
       if ((DO_SYNC)) && ! grep -qw "$SYNC_MARKER" "$TMP_OUTPUT"; then
         # Sync ran but did not complete successfully so lets not run scrub to
         # be safe
-        elog WARN "**WARNING** - check output of SYNC job." \
+        elog WARN "**WARNING** - check output of SYNC job."\
             "Could not detect marker. Not proceeding with SCRUB job."
       else
         # Everything ok - ready to run the scrub job!
@@ -108,9 +108,9 @@ function main(){
   mkdwn_ruler
   mkdwn_h2 "Postprocessing"
   run_touch
-  ((SMART_LOG)) && run_smart
-  ((SMART_STATUS)) && run_status
-  ((SMART_SPINDDOWN)) && run_spindown
+  if ((SMART_LOG)); then run_smart; fi
+  if ((SMART_STATUS)); then run_status; fi
+  if ((SMART_SPINDDOWN)); then run_spindown; fi
   elog INFO "All jobs ended."
 
   # all jobs done, let's send output to user if configured
@@ -130,8 +130,6 @@ function main(){
       trim_log < "$TMP_OUTPUT" | send_mail
     fi
   fi
-
-  exit 0;
 }
 
 #######################
@@ -140,7 +138,7 @@ function main(){
 
 function find_config() {
   if [[ ! -f "$CONFIG_FILE" ]]; then
-    elog WARN "Script configuration file not found! The script cannot be run!" \
+    elog WARN "Script configuration file not found! The script cannot be run!"\
         "Please check and try again!"
     exit 1;
   fi
@@ -161,20 +159,20 @@ function sanity_check() {
   elog INFO "Checking SnapRAID disks."
   if [[ ! -e "$CONTENT_FILE" ]]; then
     elog ERROR "**ERROR** Content file ($CONTENT_FILE) not found!"
-    elog ERROR "**ERROR** Please check the status of your disks!" \
+    elog ERROR "**ERROR** Please check the status of your disks!"\
         "The script exits here due to missing file or disk..."
     prepare_mail
     # Add a topline to email body
     sed_me "1s:^:##$SUBJECT \n:" "${TMP_OUTPUT}"
     trim_log < "$TMP_OUTPUT" | send_mail
-    exit;
+    exit 1;
   fi
 
   elog INFO "Testing that all parity files are present."
   for i in "${PARITY_FILES[@]}"; do
     if [[ ! -e "$i" ]]; then
       elog ERROR "**ERROR** Parity file ($i) not found!"
-      elog ERROR "**ERROR** Please check the status of your disks!" \
+      elog ERROR "**ERROR** Please check the status of your disks!"\
           "The script exits here due to missing file or disk..."
       prepare_mail
       # Add a topline to email body
@@ -194,16 +192,16 @@ function run_diff(){
   JOBS_DONE="DIFF"
 }
 
-function skip_sync_if_no_changes() {
-  DEL_COUNT=$(get_diff_count "removed")
-  UPDATE_COUNT=$(get_diff_count "updated")
+function is_sync_allowed() {
+  local del_count; del_count=$(get_diff_count "removed")
+  local update_count; update_count=$(get_diff_count "updated")
   local add_count; add_count=$(get_diff_count "added")
   local move_count; move_count=$(get_diff_count "moved")
   local copy_count; copy_count=$(get_diff_count "copied")
 
   # Sanity check to all counts from the output of the DIFF job.
-  if [[ -z "$DEL_COUNT" || -z "$add_count" || -z "$move_count" ||
-        -z "$copy_count" || -z "$UPDATE_COUNT" ]]; then
+  if [[ -z "$del_count" || -z "$add_count" || -z "$move_count" ||
+        -z "$copy_count" || -z "$update_count" ]]; then
     # Failed to get one or more of the count values, report to user and exit
     # with error code.
     elog ERROR "**ERROR** Failed to get one or more count values. Unable to proceed."
@@ -211,21 +209,24 @@ function skip_sync_if_no_changes() {
     send_mail < "$TMP_OUTPUT"
     exit 1;
   fi
-  elog INFO "**SUMMARY of changes - Added [$add_count] - Deleted [$DEL_COUNT]" \
-      "- Moved [$move_count] - Copied [$copy_count] - Updated [$UPDATE_COUNT]**"
+  elog INFO "**SUMMARY of changes - Added [$add_count] - Deleted [$del_count]"\
+      "- Moved [$move_count] - Copied [$copy_count] - Updated [$update_count]**"
 
-  # Without changes, the SYNC can be skipped.
-  if (((DEL_COUNT + add_count + move_count + copy_count + UPDATE_COUNT) == 0)); then
+  # With no recent changes, the SYNC can be skipped.
+  if (((del_count + add_count + move_count + copy_count + update_count) == 0)); then
     elog INFO "No change detected. Not running SYNC job."
-    DO_SYNC=0
+    false
     return
   fi
-
-  chk_del "$DEL_COUNT"
-  ((!CHK_FAIL)) && chk_updated "$UPDATE_COUNT"
-  if ((CHK_FAIL)); then
-    chk_sync_warn
+  # Before sync, check if thresholds were reached and prepare email $SUBJECT
+  local do_sync;
+  if is_del_threshld "$del_count" || is_updated_threshld "$update_count"; then
+    do_sync=$(is_force_sync_due_to_warn_threshld; echo $?)
+    SUBJECT=$(gen_email_warning_subject "$del_count" "$update_count" "$do_sync")
+  else
+    do_sync=$(true; echo $?)
   fi
+  return "$do_sync"
 }
 
 function get_diff_count(){
@@ -244,86 +245,108 @@ function sed_me(){
   output_to_file_screen
 }
 
-function chk_del(){
+function is_del_threshld(){
   local del_count; del_count=$1
   if ((del_count >= DEL_THRESHOLD)); then
-    elog WARN "**WARNING** Deleted files ($del_count)" \
+    elog WARN "**WARNING** Deleted files ($del_count)"\
         "reached/exceeded threshold ($DEL_THRESHOLD)."
-    CHK_FAIL=1
     return
-  fi
-  if ((del_count == 0)); then
+  elif ((del_count == 0)); then
     echo "There are no deleted files, that's fine."
   else
-    echo "There are deleted files. The number of deleted files" \
+    echo "There are deleted files. The number of deleted files"\
         "($del_count) is below the threshold of ($DEL_THRESHOLD)."
   fi
-  DO_SYNC=1
+  false
 }
 
-function chk_updated(){
+function is_updated_threshld(){
   local update_count; update_count=$1
   if ((update_count >= UP_THRESHOLD)); then
-    elog WARN "**WARNING** Updated files ($update_count)" \
+    elog WARN "**WARNING** Updated files ($update_count)"\
         "reached/exceeded threshold ($UP_THRESHOLD)."
-    CHK_FAIL=1
     return
-  fi
-  if ((update_count == 0)); then
+  elif ((update_count == 0)); then
     echo "There are no updated files, that's fine."
   else
-    echo "There are updated files. The number of updated files" \
+    echo "There are updated files. The number of updated files"\
         "($update_count) is below the threshold of ($UP_THRESHOLD)."
   fi
-  DO_SYNC=1
+  false
 }
 
-function chk_sync_warn(){
-  if ((SYNC_WARN_THRESHOLD > -1)); then
-    if ((SYNC_WARN_THRESHOLD == 0)); then
-      elog INFO "Forced sync is enabled."
-    else
-      elog INFO "Sync after threshold warning(s) is enabled."
+# After a number of sequential warnings, it's possible to allow a sync anyway
+# if the config SYNC_WARN_THRESHOLD is >= 0.
+function is_force_sync_due_to_warn_threshld(){
+  local sync_warn_count
+  if ((SYNC_WARN_THRESHOLD < 0)); then
+    # Safest option, never force a sync.
+    elog INFO "Forced sync is not enabled. Check $TMP_OUTPUT for details."\
+        "**NOT** proceeding with SYNC job."
+    false
+    return
+  fi
+
+  if ((SYNC_WARN_THRESHOLD == 0)); then
+    elog INFO "Forced sync is enabled."
+    return
+  fi
+
+  elog INFO "Sync after threshold warning(s) is enabled."
+  sync_warn_count=$(sed '/^[0-9]*$/!d' "$SYNC_WARN_FILE" 2>/dev/null)
+  # Zero if file does not exist or did not contain a number.
+  : "${sync_warn_count:=0}"
+  if ((sync_warn_count >= SYNC_WARN_THRESHOLD)); then
+    # Output a message and force a sync job.  Do not need to remove warning
+    # counter here as it is automatically removed when the sync job is run by
+    # this script.
+    elog INFO \
+        "Number of threshold warning(s) ($sync_warn_count) has reached/exceeded"\
+        "threshold ($SYNC_WARN_THRESHOLD). Forcing a SYNC job to run."
+    return
+  fi
+
+  # Increment the warning counter and skip the sync job.
+  ((sync_warn_count += 1))
+  echo "$sync_warn_count" > "$SYNC_WARN_FILE"
+  if ((sync_warn_count == SYNC_WARN_THRESHOLD)); then
+    elog INFO "This is the **last** warning left. **NOT** proceeding with SYNC job."
+  else
+    elog INFO "$((SYNC_WARN_THRESHOLD - sync_warn_count)) threshold"\
+        "warning(s) until the next forced sync. **NOT** proceeding with SYNC job."
+  fi
+  false
+}
+
+function gen_email_warning_subject(){
+  local del_count update_count do_sync msg
+  del_count=$1; update_count=$2; do_sync=$3
+  if (exit "$do_sync"); then
+    if ((del_count >= DEL_THRESHOLD)); then
+      msg="Forced sync with deleted files ($del_count) / ($DEL_THRESHOLD) violation"
     fi
+    if ((update_count >= UP_THRESHOLD)); then
+      msg="Forced sync with changed files ($update_count) / ($UP_THRESHOLD) violation"
+    fi
+    if ((del_count >= DEL_THRESHOLD && update_count >= UP_THRESHOLD)); then
+      msg="Sync forced with multiple violations - Deleted files"\
+          " ($del_count) / ($DEL_THRESHOLD) and changed files"\
+          " ($update_count) / ($UP_THRESHOLD)"
 
-    local sync_warn_count
-    sync_warn_count=$(sed '/^[0-9]*$/!d' "$SYNC_WARN_FILE" 2>/dev/null)
-    # zero if file does not exist or did not contain a number
-    : "${sync_warn_count:=0}"
-
-    if ((sync_warn_count >= SYNC_WARN_THRESHOLD)); then
-      # Force a sync. If the warn count is zero it means the sync was already
-      # forced, do not output a dumb message and continue with the sync job.
-      if ((sync_warn_count == 0)); then
-        DO_SYNC=1
-      else
-        # If there is at least one warn count, output a message and force a
-        # sync job. Do not need to remove warning marker here as it is
-        # automatically removed when the sync job is run by this script
-        elog INFO \
-            "Number of threshold warning(s) ($sync_warn_count) has reached/exceeded" \
-            "threshold ($SYNC_WARN_THRESHOLD). Forcing a SYNC job to run."
-        DO_SYNC=1
-      fi
-    else
-      # NO, so let's increment the warning count and skip the sync job
-      ((sync_warn_count += 1))
-      echo "$sync_warn_count" > "$SYNC_WARN_FILE"
-      if ((sync_warn_count == SYNC_WARN_THRESHOLD)); then
-        elog INFO "This is the **last** warning left. **NOT** proceeding with SYNC job."
-        DO_SYNC=0
-      else
-        elog INFO "$((SYNC_WARN_THRESHOLD - sync_warn_count)) threshold" \
-            "warning(s) until the next forced sync. **NOT** proceeding with SYNC job."
-        DO_SYNC=0
-      fi
     fi
   else
-    # NO, so let's skip SYNC
-    elog INFO "Forced sync is not enabled. Check $TMP_OUTPUT for details." \
-        "**NOT** proceeding with SYNC job."
-    DO_SYNC=0
+    if ((del_count >= DEL_THRESHOLD)); then
+      msg="Deleted files ($del_count) / ($DEL_THRESHOLD) violation"
+    fi
+    if ((update_count >= UP_THRESHOLD)); then
+      msg="Changed files ($update_count) / ($UP_THRESHOLD) violation"
+    fi
+    if ((del_count >= DEL_THRESHOLD && update_count >= UP_THRESHOLD)); then
+      msg="Multiple violations - Deleted files ($del_count) /"\
+          " ($DEL_THRESHOLD) and changed files ($update_count) / ($UP_THRESHOLD)"
+    fi
   fi
+  echo "[WARNING] $msg $EMAIL_SUBJECT_PREFIX"
 }
 
 function chk_scrub_settings(){
@@ -342,7 +365,7 @@ function chk_scrub_settings(){
       # if there is at least one warn count, output a message and force a scrub
       # job. Do not need to remove warning marker here as it is automatically
       # removed when the scrub job is run by this script
-      elog INFO "Number of delayed runs has reached/exceeded threshold" \
+      elog INFO "Number of delayed runs has reached/exceeded threshold"\
           "($SCRUB_DELAYED_RUN). A SCRUB job will run."
       run_scrub
     fi
@@ -353,7 +376,7 @@ function chk_scrub_settings(){
     if ((scrub_count == SCRUB_DELAYED_RUN)); then
       elog INFO "This is the **last** run left before running scrub job next time."
     else
-      elog INFO "$((SCRUB_DELAYED_RUN - scrub_count)) runs until the next" \
+      elog INFO "$((SCRUB_DELAYED_RUN - scrub_count)) runs until the next"\
           "scrub. **NOT** proceeding with SCRUB job."
     fi
 	fi
@@ -429,27 +452,7 @@ function run_spindown() {
 }
 
 function prepare_mail() {
-  if ((CHK_FAIL)); then
-    if ((DEL_COUNT >= DEL_THRESHOLD && !DO_SYNC)); then
-      MSG="Deleted files ($DEL_COUNT) / ($DEL_THRESHOLD) violation"
-    fi
-    if ((DEL_COUNT >= DEL_THRESHOLD && DO_SYNC)); then
-      MSG="Forced sync with deleted files ($DEL_COUNT) / ($DEL_THRESHOLD) violation"
-    fi
-    if ((UPDATE_COUNT >= UP_THRESHOLD && !DO_SYNC)); then
-      MSG="Changed files ($UPDATE_COUNT) / ($UP_THRESHOLD) violation"
-    fi
-    if ((UPDATE_COUNT >= UP_THRESHOLD && DO_SYNC)); then
-      MSG="Forced sync with changed files ($UPDATE_COUNT) / ($UP_THRESHOLD) violation"
-    fi
-    if ((DEL_COUNT >= DEL_THRESHOLD && UPDATE_COUNT >= UP_THRESHOLD && !DO_SYNC)); then
-      MSG="Multiple violations - Deleted files ($DEL_COUNT) / ($DEL_THRESHOLD) and changed files ($UPDATE_COUNT) / ($UP_THRESHOLD)"
-    fi
-    if ((DEL_COUNT >= DEL_THRESHOLD && UPDATE_COUNT >= UP_THRESHOLD && DO_SYNC)); then
-      MSG="Sync forced with multiple violations - Deleted files ($DEL_COUNT) / ($DEL_THRESHOLD) and changed files ($UPDATE_COUNT) / ($UP_THRESHOLD)"
-    fi
-    SUBJECT="[WARNING] $MSG $EMAIL_SUBJECT_PREFIX"
-  elif [[ -z "${JOBS_DONE##*"SYNC"*}" ]] && ! grep -qw "$SYNC_MARKER" "$TMP_OUTPUT"; then
+  if [[ -z "${JOBS_DONE##*"SYNC"*}" ]] && ! grep -qw "$SYNC_MARKER" "$TMP_OUTPUT"; then
     # Sync ran but did not complete successfully so lets warn the user
     SUBJECT="[WARNING] SYNC job ran but did not complete successfully $EMAIL_SUBJECT_PREFIX"
   elif [[ -z "${JOBS_DONE##*"SCRUB"*}" ]] && ! grep -qw "$SCRUB_MARKER" "$TMP_OUTPUT"; then

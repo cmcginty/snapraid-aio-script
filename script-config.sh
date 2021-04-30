@@ -59,6 +59,7 @@ SNAP_STATUS=0
 
 # location of the snapraid binary
 SNAPRAID_BIN="/usr/bin/snapraid"
+
 # location of the mail program binary
 MAIL_BIN="/usr/bin/mailx"
 
@@ -68,10 +69,7 @@ MAIL_BIN="/usr/bin/mailx"
 # Make changes only if you know what you're doing
 
 # Init variables
-CHK_FAIL=0
-DO_SYNC=0
 EMAIL_SUBJECT_PREFIX="(SnapRAID on $(hostname))"
-GRACEFUL=0
 SYNC_WARN_FILE="$CURRENT_DIR/snapRAID.warnCount"
 SCRUB_COUNT_FILE="$CURRENT_DIR/snapRAID.scrubCount"
 TMP_OUTPUT="/tmp/snapRAID.out"
