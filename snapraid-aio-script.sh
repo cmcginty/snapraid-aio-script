@@ -95,10 +95,7 @@ function main(){
         elog WARN "**WARNING** - check output of SYNC job."\
             "Could not detect marker. Not proceeding with SCRUB job."
       else
-        # Everything ok - ready to run the scrub job!
-        # The fuction will check if scrub delayed run is enabled and run scrub
-        # based on configured conditions
-        chk_scrub_settings
+        run_delayed_scrub
       fi
     fi
   else
@@ -319,9 +316,9 @@ function is_force_sync_due_to_warn_threshld(){
 }
 
 function gen_email_warning_subject(){
-  local del_count update_count do_sync msg
-  del_count=$1; update_count=$2; do_sync=$3
-  if (exit "$do_sync"); then
+  local del_count update_count force_sync msg
+  del_count=$1; update_count=$2; force_sync=$3
+  if (exit "$force_sync"); then
     if ((del_count >= DEL_THRESHOLD)); then
       msg="Forced sync with deleted files ($del_count) / ($DEL_THRESHOLD) violation"
     fi
@@ -332,7 +329,6 @@ function gen_email_warning_subject(){
       msg="Sync forced with multiple violations - Deleted files"\
           " ($del_count) / ($DEL_THRESHOLD) and changed files"\
           " ($update_count) / ($UP_THRESHOLD)"
-
     fi
   else
     if ((del_count >= DEL_THRESHOLD)); then
@@ -349,28 +345,17 @@ function gen_email_warning_subject(){
   echo "[WARNING] $msg $EMAIL_SUBJECT_PREFIX"
 }
 
-function chk_scrub_settings(){
+# Check if scrub delayed run is enabled and run scrub based on configured
+# conditions.
+function run_delayed_scrub(){
 	((SCRUB_DELAYED_RUN)) && elog INFO "Delayed scrub is enabled."
 	local scrub_count
   scrub_count=$(sed '/^[0-9]*$/!d' "$SCRUB_COUNT_FILE" 2>/dev/null)
   # zero if file does not exist or did not contain a number
   : "${scrub_count:=0}"
 
-	if ((scrub_count >= SCRUB_DELAYED_RUN)); then
-    # Run a scrub job. if the warn count is zero it means the scrub was already
-    # forced, do not output a dumb message and continue with the scrub job.
-    if ((scrub_count == 0)); then
-      run_scrub
-    else
-      # if there is at least one warn count, output a message and force a scrub
-      # job. Do not need to remove warning marker here as it is automatically
-      # removed when the scrub job is run by this script
-      elog INFO "Number of delayed runs has reached/exceeded threshold"\
-          "($SCRUB_DELAYED_RUN). A SCRUB job will run."
-      run_scrub
-    fi
-	else
-    # NO, so let's increment the warning count and skip the scrub job
+	if ((scrub_count < SCRUB_DELAYED_RUN)); then
+    # NO, so let's increment the warning count and skip the scrub job.
     ((scrub_count += 1))
     echo "$scrub_count" > "$SCRUB_COUNT_FILE"
     if ((scrub_count == SCRUB_DELAYED_RUN)); then
@@ -379,7 +364,18 @@ function chk_scrub_settings(){
       elog INFO "$((SCRUB_DELAYED_RUN - scrub_count)) runs until the next"\
           "scrub. **NOT** proceeding with SCRUB job."
     fi
-	fi
+    return
+  fi
+  # Run a scrub job. If the warn count is zero it means the scrub was already
+  # forced; do not output a message and continue with the scrub job.
+  if ((scrub_count > 0)); then
+    # if there is at least one warn count, output a message and force a scrub
+    # job. Do not need to remove warning marker here as it is automatically
+    # removed when the scrub job is run by this script.
+    elog INFO "Number of delayed runs has reached/exceeded threshold"\
+        "($SCRUB_DELAYED_RUN). A SCRUB job will run."
+  fi
+  run_scrub
 }
 
 function run_scrub(){
