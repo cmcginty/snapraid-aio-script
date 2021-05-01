@@ -146,15 +146,6 @@ function run_diff(){
   snapraid_cmd diff
   DIFF_CODE=$?
   elog INFO "DIFF finished."
-}
-
-function is_sync_needed() {
-  local del_count; del_count=$(get_diff_count "removed")
-  local update_count; update_count=$(get_diff_count "updated")
-  local add_count; add_count=$(get_diff_count "added")
-  local move_count; move_count=$(get_diff_count "moved")
-  local copy_count; copy_count=$(get_diff_count "copied")
-
   # Handle command error.
   if ((DIFF_CODE == 1)); then
     # Failed to get one or more of the count values, report to user and exit
@@ -166,9 +157,16 @@ function is_sync_needed() {
     send_mail < "$TMP_OUTPUT"
     exit 1;
   fi
+  local del_count; del_count=$(get_diff_count "removed")
+  local update_count; update_count=$(get_diff_count "updated")
+  local add_count; add_count=$(get_diff_count "added")
+  local move_count; move_count=$(get_diff_count "moved")
+  local copy_count; copy_count=$(get_diff_count "copied")
   elog INFO "**SUMMARY of changes - Added [$add_count] - Deleted [$del_count]"\
       "- Moved [$move_count] - Copied [$copy_count] - Updated [$update_count]**"
+}
 
+function is_sync_needed() {
   # If no changes found.
   if ((DIFF_CODE == 0)); then
     elog INFO "No change detected. Not running SYNC job."
@@ -176,7 +174,9 @@ function is_sync_needed() {
     return
   fi
   # Before sync, check if thresholds were reached and prepare email $SUBJECT
-  local do_sync;
+  local do_sync
+  local del_count; del_count=$(get_diff_count "removed")
+  local update_count; update_count=$(get_diff_count "updated")
   if is_del_threshld "$del_count" || is_updated_threshld "$update_count"; then
     do_sync=$(is_force_sync_due_to_warn_threshld; echo $?)
     SUBJECT=$(gen_email_warning_subject "$del_count" "$update_count" "$do_sync")
