@@ -18,16 +18,12 @@ CONFIG_FILE=$CURRENT_DIR/script-config.sh
 # shellcheck source=script-config.sh
 source "$CONFIG_FILE"
 
-########################################################################
-
-SYNC_MARKER="SYNC -"
-SCRUB_MARKER="SCRUB -"
-
 ######################
 #   MAIN SCRIPT      #
 ######################
 
 function main(){
+  local sync_step=0
   # create tmp file for output
   true > "$TMP_OUTPUT"
 
@@ -51,55 +47,22 @@ function main(){
 
   run_diff
 
-  # Run sync if conditions are met.
   if is_sync_allowed; then
-    DO_SYNC=1
-    mkdwn_h3 "SnapRAID SYNC"
-    elog INFO "SYNC Job started."
-    if ((PREHASH)); then
-      snapraid_cmd sync -h -q
-    else
-      snapraid_cmd sync -q
-    fi
-    elog INFO "SYNC finished."
-    JOBS_DONE="$JOBS_DONE + SYNC"
-    # insert SYNC marker to 'Everything OK' or 'Nothing to do' string to
-    # differentiate it from SCRUB job later
-    sed_me "
-      s/^Everything OK/${SYNC_MARKER} Everything OK/g;
-      s/^Nothing to do/${SYNC_MARKER} Nothing to do/g" "$TMP_OUTPUT"
-    # Remove any warning flags if set previously. This is done in this step to
-    # take care of scenarios when user has manually synced or restored deleted
-    # files and we will have missed it in the checks above.
-    if [[ -e "$SYNC_WARN_FILE" ]]; then
-      rm "$SYNC_WARN_FILE"
-    fi
+    sync_step=1
+    run_sync
   fi
 
-  # Moving onto scrub now. Check if user has enabled scrub
   mkdwn_h3 "SnapRAID SCRUB"
-  if ((SCRUB_PERCENT > 0)); then
-    # YES, first let's check if delete threshold has been breached and we have
-    # not forced a sync.
-    if ((!DO_SYNC)); then
-      # YES, parity is out of sync so let's not run scrub job
-      elog INFO "Scrub job is cancelled as parity info is out of sync"\
-          "(deleted or changed files threshold has been breached)."
-    else
-      # NO, delete threshold has not been breached OR we forced a sync, but we
-      # have one last test - let's make sure if sync ran, it completed
-      # successfully (by checking for the marker text in the output).
-      if ((DO_SYNC)) && ! grep -qw "$SYNC_MARKER" "$TMP_OUTPUT"; then
-        # Sync ran but did not complete successfully so lets not run scrub to
-        # be safe
-        elog WARN "**WARNING** - check output of SYNC job."\
-            "Could not detect marker. Not proceeding with SCRUB job."
-      else
-        run_delayed_scrub
-      fi
-    fi
-  else
+  if ((SCRUB_PERCENT == 0)); then
     elog INFO "Scrub job is not enabled. Not running SCRUB job."
+  elif ((!sync_step && THRESH_WARNING)); then
+    elog INFO "Scrub job is cancelled as parity info is out of sync"\
+        "(deleted or changed files threshold has been breached)."
+  elif ((SYNC_ERR)); then
+    elog WARN "**WARNING** - check output of SYNC job. Failure detected."\
+        "Not proceeding with SCRUB job."
+  else
+    run_delayed_scrub
   fi
 
   mkdwn_ruler
@@ -143,7 +106,8 @@ function find_config() {
 }
 
 function install_markdown() {
-  if ! (dpkg-query -W -f='${Status}' python-markdown | grep -q "ok installed") 2>/dev/null; then
+  if ! (dpkg-query -W -f='${Status}' python-markdown | grep -q "ok installed") 2>/dev/null
+  then
     elog WARN "**Markdown has not been found and will be installed.**"
     # super silent and secret install command
     export DEBIAN_FRONTEND=noninteractive
@@ -202,7 +166,8 @@ function is_sync_allowed() {
     # Failed to get one or more of the count values, report to user and exit
     # with error code.
     elog ERROR "**ERROR** Failed to get one or more count values. Unable to proceed."
-    SUBJECT="$EMAIL_SUBJECT_PREFIX WARNING - Unable to proceed with SYNC/SCRUB job(s). Check DIFF job output."
+    SUBJECT="$EMAIL_SUBJECT_PREFIX WARNING - Unable to proceed with"\
+        "SYNC/SCRUB job(s). Check DIFF job output."
     send_mail < "$TMP_OUTPUT"
     exit 1;
   fi
@@ -227,7 +192,7 @@ function is_sync_allowed() {
 }
 
 function get_diff_count(){
-  local count_name; count_name=$1
+  local count_name=$1
   grep -w '^ \{1,\}[0-9]* '"$count_name" "$TMP_OUTPUT" |
     sed 's/^ *//g' | cut -d ' ' -f1
 }
@@ -243,7 +208,7 @@ function sed_me(){
 }
 
 function is_del_threshld(){
-  local del_count; del_count=$1
+  local del_count=$1
   if ((del_count >= DEL_THRESHOLD)); then
     elog WARN "**WARNING** Deleted files ($del_count)"\
         "reached/exceeded threshold ($DEL_THRESHOLD)."
@@ -258,7 +223,7 @@ function is_del_threshld(){
 }
 
 function is_updated_threshld(){
-  local update_count; update_count=$1
+  local update_count=$1
   if ((update_count >= UP_THRESHOLD)); then
     elog WARN "**WARNING** Updated files ($update_count)"\
         "reached/exceeded threshold ($UP_THRESHOLD)."
@@ -316,8 +281,10 @@ function is_force_sync_due_to_warn_threshld(){
 }
 
 function gen_email_warning_subject(){
-  local del_count update_count force_sync msg
-  del_count=$1; update_count=$2; force_sync=$3
+  local del_count=$1
+  local update_count=$2
+  local force_sync=$3
+  local msg
   if (exit "$force_sync"); then
     if ((del_count >= DEL_THRESHOLD)); then
       msg="Forced sync with deleted files ($del_count) / ($DEL_THRESHOLD) violation"
@@ -343,6 +310,17 @@ function gen_email_warning_subject(){
     fi
   fi
   echo "[WARNING] $msg $EMAIL_SUBJECT_PREFIX"
+}
+
+function run_sync(){
+  local hash_arg; hash_arg=$( ((PREHASH)) && echo "-h")
+  mkdwn_h3 "SnapRAID SYNC"
+  elog INFO "SYNC Job started."
+  snapraid_cmd sync -q "$hash_arg"
+  SYNC_ERR=$?
+  elog INFO "SYNC finished."
+  JOBS_DONE="$JOBS_DONE + SYNC"
+  rm -f "$SYNC_WARN_FILE" # Clear warning counter if set previously.
 }
 
 # Check if scrub delayed run is enabled and run scrub based on configured
@@ -381,26 +359,19 @@ function run_delayed_scrub(){
 function run_scrub(){
   elog INFO "SCRUB Job started."
   snapraid_cmd scrub -p $SCRUB_PERCENT -o $SCRUB_AGE -q
+  SCRUB_ERR=$?
   elog INFO "SCRUB finished."
   JOBS_DONE="$JOBS_DONE + SCRUB"
-  # insert SCRUB marker to 'Everything OK' or 'Nothing to do' string to
-  # differentiate it from SYNC job above
-  sed_me "
-    s/^Everything OK/${SCRUB_MARKER} Everything OK/g;
-    s/^Nothing to do/${SCRUB_MARKER} Nothing to do/g" "$TMP_OUTPUT"
-  # Remove the warning flag if set previously. This is done now to
-  # take care of scenarios when user has manually synced or restored
-  # deleted files and we will have missed it in the checks above.
-  if [[ -e "$SCRUB_COUNT_FILE" ]]; then
-    rm "$SCRUB_COUNT_FILE"
-  fi
+  rm -f "$SCRUB_COUNT_FILE" # Clear warning counter if set previously.
 }
 
 function run_touch(){
   mkdwn_h3 "SnapRAID TOUCH"
   elog INFO "TOUCH started."
   echo "Checking for zero sub-second files."
-  TIMESTATUS=$($SNAPRAID_BIN status | grep 'You have [1-9][0-9]* files with zero sub-second timestamp\.' | sed 's/^You have/Found/g')
+  TIMESTATUS=$($SNAPRAID_BIN status |
+      grep 'You have [1-9][0-9]* files with zero sub-second timestamp\.' |
+      sed 's/^You have/Found/g')
   if [[ -n "$TIMESTATUS" ]]; then
     echo "$TIMESTATUS"
     echo "Running TOUCH job to timestamp."
@@ -448,10 +419,10 @@ function run_spindown() {
 }
 
 function prepare_mail() {
-  if [[ -z "${JOBS_DONE##*"SYNC"*}" ]] && ! grep -qw "$SYNC_MARKER" "$TMP_OUTPUT"; then
+  if [[ -z "${JOBS_DONE##*"SYNC"*}" ]] && ((SYNC_ERR)); then
     # Sync ran but did not complete successfully so lets warn the user
     SUBJECT="[WARNING] SYNC job ran but did not complete successfully $EMAIL_SUBJECT_PREFIX"
-  elif [[ -z "${JOBS_DONE##*"SCRUB"*}" ]] && ! grep -qw "$SCRUB_MARKER" "$TMP_OUTPUT"; then
+  elif [[ -z "${JOBS_DONE##*"SCRUB"*}" ]] && ((SCRUB_ERR)); then
     # Scrub ran but did not complete successfully so lets warn the user
     SUBJECT="[WARNING] SCRUB job ran but did not complete successfully $EMAIL_SUBJECT_PREFIX"
   else
@@ -494,14 +465,15 @@ function send_mail(){
 
 # Run a snapraid command; manage output redirection.
 function snapraid_cmd() {
-  local args; args=("$@")
-  local start; start=$SECONDS
+  local start=$SECONDS
   mkdwn_codeblk
-  $SNAPRAID_BIN "${args[@]}"
+  $SNAPRAID_BIN "$@"
+  local status=$?
   close_output_and_wait
   output_to_file_screen
   mkdwn_codeblk
   echo "Waited for $(elapsed $start)."
+  (exit $status)
 }
 
 # Due to how process substitution and newer bash versions work, this function
@@ -529,15 +501,15 @@ function output_to_file_screen(){
 # "echo and log"; send messages to STDOUT and /var/log/, where $1 is the
 # log level and $2 is the message.
 function elog() {
-  local priority; priority=$1
-  local message; message=$2
+  local priority=$1
+  local message=$2
   echo "$message"
   echo "$(date '+[%Y-%m-%d %H:%M:%S]') $priority: $message" >> "$SNAPRAID_LOG"
 }
 
 # Print the elapsed time since $start (default 0)
 function elapsed() {
-  local start; start=${1:-0}
+  local start=${1:-0}
   local elapsed=$((SECONDS - start))
   if ((elapsed > 0)); then
     echo "$((elapsed / 3600))hrs $(((elapsed / 60) % 60))min $((elapsed % 60))sec"
