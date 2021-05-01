@@ -58,7 +58,7 @@ function main(){
 
   mkdwn_h3 "SnapRAID SCRUB"
   if is_scrub_needed; then
-    run_delayed_scrub
+    run_scrub
   fi
 
   mkdwn_ruler
@@ -507,7 +507,8 @@ function sed_me(){
 # "echo and log"; send messages to STDOUT and /var/log/, where $1 is the
 # log level and $2 is the message.
 function elog() {
-  local priority=$1 message=$2
+  local priority=$1; shift
+  local message=$*
   echo "$message"
   echo "$(date '+[%Y-%m-%d %H:%M:%S]') $priority: $message" >> "$SNAPRAID_LOG"
 }
