@@ -18,12 +18,16 @@ CONFIG_FILE=$CURRENT_DIR/script-config.sh
 # shellcheck source=script-config.sh
 source "$CONFIG_FILE"
 
+# Array of snapraid commands completed by the the script.
+JOBS=()
+SYNC_ERR="UNK"
+SCRUB_ERR="UNK"
+
 ######################
 #   MAIN SCRIPT      #
 ######################
 
 function main(){
-  local sync_step=0
   # create tmp file for output
   true > "$TMP_OUTPUT"
 
@@ -48,14 +52,13 @@ function main(){
   run_diff
 
   if is_sync_allowed; then
-    sync_step=1
     run_sync
   fi
 
   mkdwn_h3 "SnapRAID SCRUB"
   if ((SCRUB_PERCENT == 0)); then
     elog INFO "Scrub job is not enabled. Not running SCRUB job."
-  elif ((!sync_step && THRESH_WARNING)); then
+  elif ! contains SYNC "${JOBS[@]}" && ((THRESH_WARNING)); then
     elog INFO "Scrub job is cancelled as parity info is out of sync"\
         "(deleted or changed files threshold has been breached)."
   elif ((SYNC_ERR)); then
@@ -143,11 +146,11 @@ function sanity_check() {
 }
 
 function run_diff(){
+  JOBS+=("DIFF")
   mkdwn_h3 "SnapRAID DIFF"
   elog INFO "DIFF Job started."
   snapraid_cmd diff
   elog INFO "DIFF finished."
-  JOBS_DONE="DIFF"
 }
 
 function is_sync_allowed() {
@@ -268,9 +271,7 @@ function is_force_sync_due_to_warn_threshld(){
 }
 
 function gen_email_warning_subject(){
-  local del_count=$1
-  local update_count=$2
-  local force_sync=$3
+  local del_count=$1 update_count=$2 force_sync=$3
   local msg
   if (exit "$force_sync"); then
     if ((del_count >= DEL_THRESHOLD)); then
@@ -301,12 +302,12 @@ function gen_email_warning_subject(){
 
 function run_sync(){
   local hash_arg; hash_arg=$( ((PREHASH)) && echo "-h")
+  JOBS+=("SYNC")
   mkdwn_h3 "SnapRAID SYNC"
   elog INFO "SYNC Job started."
   snapraid_cmd sync -q "$hash_arg"
   SYNC_ERR=$?
   elog INFO "SYNC finished."
-  JOBS_DONE="$JOBS_DONE + SYNC"
   rm -f "$SYNC_WARN_FILE" # Clear warning counter if set previously.
 }
 
@@ -344,11 +345,11 @@ function run_delayed_scrub(){
 }
 
 function run_scrub(){
+  JOBS+=("SCRUB")
   elog INFO "SCRUB Job started."
   snapraid_cmd scrub -p $SCRUB_PERCENT -o $SCRUB_AGE -q
   SCRUB_ERR=$?
   elog INFO "SCRUB finished."
-  JOBS_DONE="$JOBS_DONE + SCRUB"
   rm -f "$SCRUB_COUNT_FILE" # Clear warning counter if set previously.
 }
 
@@ -406,14 +407,14 @@ function run_spindown() {
 }
 
 function prepare_mail() {
-  if [[ -z "${JOBS_DONE##*"SYNC"*}" ]] && ((SYNC_ERR)); then
+  if (contains SYNC "${JOBS[@]}" ) && ((SYNC_ERR)); then
     # Sync ran but did not complete successfully so lets warn the user
     SUBJECT="[WARNING] SYNC job ran but did not complete successfully"
-  elif [[ -z "${JOBS_DONE##*"SCRUB"*}" ]] && ((SCRUB_ERR)); then
+  elif (contains SCRUB "${JOBS[@]}" ) && ((SCRUB_ERR)); then
     # Scrub ran but did not complete successfully so lets warn the user
     SUBJECT="[WARNING] SCRUB job ran but did not complete successfully"
   else
-    SUBJECT="[COMPLETED] $JOBS_DONE Jobs"
+    SUBJECT="[COMPLETED] $(joinby '+' "${JOBS[@]}") Jobs"
   fi
   SUBJECT+=" $EMAIL_SUBJECT_PREFIX"
 }
@@ -499,8 +500,7 @@ function sed_me(){
 # "echo and log"; send messages to STDOUT and /var/log/, where $1 is the
 # log level and $2 is the message.
 function elog() {
-  local priority=$1
-  local message=$2
+  local priority=$1 message=$2
   echo "$message"
   echo "$(date '+[%Y-%m-%d %H:%M:%S]') $priority: $message" >> "$SNAPRAID_LOG"
 }
@@ -514,6 +514,18 @@ function elapsed() {
   else
     echo "a jiffy"
   fi
+}
+
+function contains(){
+  local x match=$1; shift
+  for x; do [[ "$x" == "$match" ]] && return; done
+  false
+}
+
+function joinby(){
+  local sep=$1; shift
+  out=$(printf "$sep"'%s' "$@")
+  echo "${out:1}" # Remove leading seperator.
 }
 
 # Common markdown formatting features.
