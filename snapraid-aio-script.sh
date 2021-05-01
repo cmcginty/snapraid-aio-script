@@ -160,8 +160,9 @@ function is_sync_needed() {
     # Failed to get one or more of the count values, report to user and exit
     # with error code.
     elog ERROR "**ERROR** Failed to get one or more count values. Unable to proceed."
-    SUBJECT="$EMAIL_SUBJECT_PREFIX WARNING - Unable to proceed with"\
-        "SYNC/SCRUB job(s). Check DIFF job output."
+    SUBJECT=`
+      `"$EMAIL_SUBJECT_PREFIX WARNING - Unable to proceed with SYNC/SCRUB"`
+      `" job(s). Check DIFF job output."
     send_mail < "$TMP_OUTPUT"
     exit 1;
   fi
@@ -275,9 +276,9 @@ function gen_email_warning_subject(){
       msg="Forced sync with changed files ($update_count) / ($UP_THRESHOLD) violation"
     fi
     if ((del_count >= DEL_THRESHOLD && update_count >= UP_THRESHOLD)); then
-      msg="Sync forced with multiple violations - Deleted files"\
-          " ($del_count) / ($DEL_THRESHOLD) and changed files"\
-          " ($update_count) / ($UP_THRESHOLD)"
+      msg="Sync forced with multiple violations - Deleted files"`
+          `" ($del_count) / ($DEL_THRESHOLD) and changed files"`
+          `" ($update_count) / ($UP_THRESHOLD)"
     fi
   else
     if ((del_count >= DEL_THRESHOLD)); then
@@ -287,8 +288,9 @@ function gen_email_warning_subject(){
       msg="Changed files ($update_count) / ($UP_THRESHOLD) violation"
     fi
     if ((del_count >= DEL_THRESHOLD && update_count >= UP_THRESHOLD)); then
-      msg="Multiple violations - Deleted files ($del_count) /"\
-          " ($DEL_THRESHOLD) and changed files ($update_count) / ($UP_THRESHOLD)"
+      msg="Multiple violations -"`
+          `" Deleted files ($del_count) / ($DEL_THRESHOLD) and "`
+          `" changed files ($update_count) / ($UP_THRESHOLD)"
     fi
   fi
   echo "[WARNING] $msg $EMAIL_SUBJECT_PREFIX"
