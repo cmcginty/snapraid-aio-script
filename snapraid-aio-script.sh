@@ -72,23 +72,21 @@ function main(){
   if ((SMART_STATUS)); then run_status; fi
   if ((SMART_SPINDDOWN)); then run_spindown; fi
   elog INFO "All jobs ended."
+  mkdwn_ruler
+  mkdwn_h2 "Total time elapsed for SnapRAID: $(elapsed)"
 
-  # all jobs done, let's send output to user if configured
-  if [ "$EMAIL_ADDRESS" ]; then
-    echo -e "Email address is set. Sending email report to **$EMAIL_ADDRESS**"
-    # check if deleted count exceeded threshold
-    prepare_mail
-
-    mkdwn_ruler
-    mkdwn_h2 "Total time elapsed for SnapRAID: $(elapsed)"
-
-    # Add a topline to email body
-    sed_me "1s:^:##$SUBJECT \n:" "${TMP_OUTPUT}"
-    if ((VERBOSITY)); then
-      send_mail < "$TMP_OUTPUT"
-    else
-      trim_log < "$TMP_OUTPUT" | send_mail
-    fi
+  if [[ -z "$EMAIL_ADDRESS" ]]; then
+    exit
+  fi
+  echo -e "Email address is set. Sending email report to **$EMAIL_ADDRESS**"
+  # check if deleted count exceeded threshold
+  prepare_mail
+  # Add a topline to email body
+  sed_me "1s:^:##$SUBJECT \n:" "${TMP_OUTPUT}"
+  if ((VERBOSITY)); then
+    send_mail < "$TMP_OUTPUT"
+  else
+    trim_log < "$TMP_OUTPUT" | send_mail
   fi
 }
 
@@ -128,7 +126,6 @@ function sanity_check() {
     trim_log < "$TMP_OUTPUT" | send_mail
     exit 1;
   fi
-
   elog INFO "Testing that all parity files are present."
   for i in "${PARITY_FILES[@]}"; do
     if [[ ! -e "$i" ]]; then
@@ -421,13 +418,14 @@ function run_spindown() {
 function prepare_mail() {
   if [[ -z "${JOBS_DONE##*"SYNC"*}" ]] && ((SYNC_ERR)); then
     # Sync ran but did not complete successfully so lets warn the user
-    SUBJECT="[WARNING] SYNC job ran but did not complete successfully $EMAIL_SUBJECT_PREFIX"
+    SUBJECT="[WARNING] SYNC job ran but did not complete successfully"
   elif [[ -z "${JOBS_DONE##*"SCRUB"*}" ]] && ((SCRUB_ERR)); then
     # Scrub ran but did not complete successfully so lets warn the user
-    SUBJECT="[WARNING] SCRUB job ran but did not complete successfully $EMAIL_SUBJECT_PREFIX"
+    SUBJECT="[WARNING] SCRUB job ran but did not complete successfully"
   else
-    SUBJECT="[COMPLETED] $JOBS_DONE Jobs $EMAIL_SUBJECT_PREFIX"
+    SUBJECT="[COMPLETED] $JOBS_DONE Jobs"
   fi
+  SUBJECT+=" $EMAIL_SUBJECT_PREFIX"
 }
 
 # Remove the verbose output of TOUCH and DIFF commands to make the email more
