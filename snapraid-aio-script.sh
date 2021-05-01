@@ -22,6 +22,7 @@ source "$CONFIG_FILE"
 JOBS=()
 SYNC_ERR="UNK"
 SCRUB_ERR="UNK"
+DIFF_CODE="UNK"
 
 ######################
 #   MAIN SCRIPT      #
@@ -143,6 +144,7 @@ function run_diff(){
   mkdwn_h3 "SnapRAID DIFF"
   elog INFO "DIFF Job started."
   snapraid_cmd diff
+  DIFF_CODE=$?
   elog INFO "DIFF finished."
 }
 
@@ -153,9 +155,8 @@ function is_sync_needed() {
   local move_count; move_count=$(get_diff_count "moved")
   local copy_count; copy_count=$(get_diff_count "copied")
 
-  # Sanity check to all counts from the output of the DIFF job.
-  if [[ -z "$del_count" || -z "$add_count" || -z "$move_count" ||
-        -z "$copy_count" || -z "$update_count" ]]; then
+  # Handle command error.
+  if ((DIFF_CODE == 1)); then
     # Failed to get one or more of the count values, report to user and exit
     # with error code.
     elog ERROR "**ERROR** Failed to get one or more count values. Unable to proceed."
@@ -167,8 +168,8 @@ function is_sync_needed() {
   elog INFO "**SUMMARY of changes - Added [$add_count] - Deleted [$del_count]"\
       "- Moved [$move_count] - Copied [$copy_count] - Updated [$update_count]**"
 
-  # With no recent changes, the SYNC can be skipped.
-  if (((del_count + add_count + move_count + copy_count + update_count) == 0)); then
+  # If no changes found.
+  if ((DIFF_CODE == 0)); then
     elog INFO "No change detected. Not running SYNC job."
     false
     return
