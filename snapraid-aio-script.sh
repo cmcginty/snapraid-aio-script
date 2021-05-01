@@ -194,16 +194,6 @@ function get_diff_count(){
     sed 's/^ *//g' | cut -d ' ' -f1
 }
 
-function sed_me(){
-  # Close the open output stream first, then perform sed and open a new tee
-  # process and redirect output. We close stream because of the calls to new
-  # wait function in between sed_me calls. If we do not do this we try to close
-  # Processes which are not parents of the shell.
-  exec >& "$OUT" 2>& "$ERROR"
-  sed -i "$1" "$2"
-  output_to_file_screen
-}
-
 function is_del_threshld(){
   local del_count=$1
   if ((del_count >= DEL_THRESHOLD)); then
@@ -494,6 +484,16 @@ function output_to_file_screen(){
   exec {OUT}>&1 {ERROR}>&2
   # NOTE: Not preferred format but valid: exec &> >(tee -ia "${TMP_OUTPUT}" )
   exec > >(tee -a "${TMP_OUTPUT}") 2>&1
+}
+
+function sed_me(){
+  # Close the open output stream first, then perform sed and open a new tee
+  # process and redirect output. We close stream because of the calls to new
+  # wait function in between sed_me calls. If we do not do this we try to close
+  # Processes which are not parents of the shell.
+  exec >& "$OUT" 2>& "$ERROR"
+  sed -i "$1" "$2"
+  output_to_file_screen
 }
 
 # "echo and log"; send messages to STDOUT and /var/log/, where $1 is the
