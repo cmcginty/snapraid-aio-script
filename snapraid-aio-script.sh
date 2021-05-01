@@ -472,11 +472,11 @@ function snapraid_cmd() {
 # finish. Probably not the best way of 'fixing' this issue. Someone with more
 # knowledge can provide better insight.
 function close_output_and_wait(){
+  local pid
   exec >& "$OUT" 2>& "$ERROR"
-  CHILD_PID=$(pgrep -P $$)
-  if [[ -n "$CHILD_PID" ]]; then
-    wait "$CHILD_PID"
-  fi
+  for pid in $(pgrep -P $$); do
+    wait "$pid"
+  done
 }
 
 # Redirects output to file and screen. Open a new tee process.
