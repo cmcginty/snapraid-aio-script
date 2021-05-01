@@ -51,20 +51,13 @@ function main(){
 
   run_diff
 
-  if is_sync_allowed; then
+  mkdwn_h3 "SnapRAID SYNC"
+  if is_sync_needed; then
     run_sync
   fi
 
   mkdwn_h3 "SnapRAID SCRUB"
-  if ((SCRUB_PERCENT == 0)); then
-    elog INFO "Scrub job is not enabled. Not running SCRUB job."
-  elif ! contains SYNC "${JOBS[@]}" && ((THRESH_WARNING)); then
-    elog INFO "Scrub job is cancelled as parity info is out of sync"\
-        "(deleted or changed files threshold has been breached)."
-  elif ((SYNC_ERR)); then
-    elog WARN "**WARNING** - check output of SYNC job. Failure detected."\
-        "Not proceeding with SCRUB job."
-  else
+  if is_scrub_needed; then
     run_delayed_scrub
   fi
 
@@ -153,7 +146,7 @@ function run_diff(){
   elog INFO "DIFF finished."
 }
 
-function is_sync_allowed() {
+function is_sync_needed() {
   local del_count; del_count=$(get_diff_count "removed")
   local update_count; update_count=$(get_diff_count "updated")
   local add_count; add_count=$(get_diff_count "added")
@@ -303,25 +296,41 @@ function gen_email_warning_subject(){
 function run_sync(){
   local hash_arg; hash_arg=$( ((PREHASH)) && echo "-h")
   JOBS+=("SYNC")
-  mkdwn_h3 "SnapRAID SYNC"
   elog INFO "SYNC Job started."
   snapraid_cmd sync -q "$hash_arg"
   SYNC_ERR=$?
-  elog INFO "SYNC finished."
   rm -f "$SYNC_WARN_FILE" # Clear warning counter if set previously.
 }
 
-# Check if scrub delayed run is enabled and run scrub based on configured
-# conditions.
-function run_delayed_scrub(){
-	((SCRUB_DELAYED_RUN)) && elog INFO "Delayed scrub is enabled."
-	local scrub_count
-  scrub_count=$(sed '/^[0-9]*$/!d' "$SCRUB_COUNT_FILE" 2>/dev/null)
-  # zero if file does not exist or did not contain a number
-  : "${scrub_count:=0}"
+function is_scrub_needed(){
+  if ((SCRUB_PERCENT == 0)); then
+    elog INFO "Scrub job is not enabled. Not running SCRUB job."
+    false
+    return
+  elif ! contains SYNC "${JOBS[@]}" && ((THRESH_WARNING)); then
+    elog INFO "Scrub job is cancelled as parity info is out of sync"\
+        "(deleted or changed files threshold has been breached)."
+    false
+    return
+  elif ((SYNC_ERR)); then
+    elog WARN "**WARNING** - check output of SYNC job. Failure detected."\
+        "Not proceeding with SCRUB job."
+    false
+    return
+  fi
+  ! is_scrub_delayed
+}
 
+# Check if scrub delayed run is enabled and return True if the scrub should be
+# skipped.
+function is_scrub_delayed(){
+	local scrub_count
+	((SCRUB_DELAYED_RUN)) && elog INFO "Delayed scrub is enabled."
+  scrub_count=$(sed '/^[0-9]*$/!d' "$SCRUB_COUNT_FILE" 2>/dev/null)
+  # zero count if file does not exist or did not contain a number
+  : "${scrub_count:=0}"
 	if ((scrub_count < SCRUB_DELAYED_RUN)); then
-    # NO, so let's increment the warning count and skip the scrub job.
+    # YES, so let's increment the warning count and skip the scrub job.
     ((scrub_count += 1))
     echo "$scrub_count" > "$SCRUB_COUNT_FILE"
     if ((scrub_count == SCRUB_DELAYED_RUN)); then
@@ -332,16 +341,15 @@ function run_delayed_scrub(){
     fi
     return
   fi
-  # Run a scrub job. If the warn count is zero it means the scrub was already
-  # forced; do not output a message and continue with the scrub job.
+  # NO, run a scrub job.
   if ((scrub_count > 0)); then
-    # if there is at least one warn count, output a message and force a scrub
-    # job. Do not need to remove warning marker here as it is automatically
-    # removed when the scrub job is run by this script.
+    # If there is at least one warn count, output a message.  Do not need to
+    # remove warning marker here as it is automatically removed when the scrub
+    # job is run by this script.
     elog INFO "Number of delayed runs has reached/exceeded threshold"\
         "($SCRUB_DELAYED_RUN). A SCRUB job will run."
   fi
-  run_scrub
+  false
 }
 
 function run_scrub(){
@@ -349,7 +357,6 @@ function run_scrub(){
   elog INFO "SCRUB Job started."
   snapraid_cmd scrub -p $SCRUB_PERCENT -o $SCRUB_AGE -q
   SCRUB_ERR=$?
-  elog INFO "SCRUB finished."
   rm -f "$SCRUB_COUNT_FILE" # Clear warning counter if set previously.
 }
 
@@ -423,8 +430,8 @@ function prepare_mail() {
 # concise.
 function trim_log(){
   sed '
-    /^Running TOUCH job to timestamp/,/^\TOUCH finished/{
-      /^Running TOUCH job to timestamp/!{/^TOUCH finished/!d}
+    /^### SnapRAID TOUCH/,/^\TOUCH finished/{
+      /^### SnapRAID TOUCH/!{/^TOUCH finished/!d}
     };
     /^### SnapRAID DIFF/,/^\DIFF finished/{
       /^### SnapRAID DIFF/!{/^DIFF finished/!d}
