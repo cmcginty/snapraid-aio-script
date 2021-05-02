@@ -23,6 +23,7 @@ JOBS=()
 SYNC_ERR="UNK"
 SCRUB_ERR="UNK"
 DIFF_CODE="UNK"
+EMAIL_WARN_SUBJECT=""
 
 ######################
 #   MAIN SCRIPT      #
@@ -32,10 +33,8 @@ function main(){
   # create tmp file for output
   true > "$TMP_OUTPUT"
 
-  # Redirect all output to file and screen. Starts a tee process
   output_to_file_screen
 
-  # timestamp the job
   elog INFO "SnapRAID Script Job started."
   elog INFO "Running SnapRAID version $SNAPRAIDVERSION"
   elog INFO "SnapRAID AIO Script version $SNAPSCRIPTVERSION"
@@ -71,20 +70,7 @@ function main(){
   elog INFO "All jobs ended."
   mkdwn_ruler
   mkdwn_h2 "Total time elapsed for SnapRAID: $(elapsed)"
-
-  if [[ -z "$EMAIL_ADDRESS" ]]; then
-    exit
-  fi
-  echo -e "Email address is set. Sending email report to **$EMAIL_ADDRESS**"
-  # check if deleted count exceeded threshold
-  prepare_mail
-  # Add a topline to email body
-  sed_me "1s:^:##$SUBJECT \n:" "${TMP_OUTPUT}"
-  if ((VERBOSITY)); then
-    send_mail < "$TMP_OUTPUT"
-  else
-    trim_log < "$TMP_OUTPUT" | send_mail
-  fi
+  gen_email_and_send
 }
 
 #######################
@@ -117,10 +103,7 @@ function sanity_check() {
     elog ERROR "**ERROR** Content file ($CONTENT_FILE) not found!"
     elog ERROR "**ERROR** Please check the status of your disks!"\
         "The script exits here due to missing file or disk..."
-    prepare_mail
-    # Add a topline to email body
-    sed_me "1s:^:##$SUBJECT \n:" "${TMP_OUTPUT}"
-    trim_log < "$TMP_OUTPUT" | send_mail
+    gen_email_and_send
     exit 1;
   fi
   elog INFO "Testing that all parity files are present."
@@ -129,18 +112,14 @@ function sanity_check() {
       elog ERROR "**ERROR** Parity file ($i) not found!"
       elog ERROR "**ERROR** Please check the status of your disks!"\
           "The script exits here due to missing file or disk..."
-      prepare_mail
-      # Add a topline to email body
-      sed_me "1s:^:##$SUBJECT \n:" "${TMP_OUTPUT}"
-      trim_log < "$TMP_OUTPUT" | send_mail
-      exit;
+      gen_email_and_send
+      exit 1;
     fi
   done
   echo "All parity files found. Continuing..."
 }
 
 function run_diff(){
-  JOBS+=("DIFF")
   mkdwn_h3 "SnapRAID DIFF"
   elog INFO "DIFF Job started."
   snapraid_cmd diff
@@ -150,13 +129,10 @@ function run_diff(){
   if ((DIFF_CODE == 1)); then
     # Failed to get one or more of the count values, report to user and exit
     # with error code.
-    elog ERROR "**ERROR** Failed to get one or more count values. Unable to proceed."
-    SUBJECT=`
-      `"$EMAIL_SUBJECT_PREFIX WARNING - Unable to proceed with SYNC/SCRUB"`
-      `" job(s). Check DIFF job output."
-    send_mail < "$TMP_OUTPUT"
+    gen_email_and_send
     exit 1;
   fi
+  JOBS+=("DIFF")
   local del_count; del_count=$(get_diff_count "removed")
   local update_count; update_count=$(get_diff_count "updated")
   local add_count; add_count=$(get_diff_count "added")
@@ -179,7 +155,9 @@ function is_sync_needed() {
   local update_count; update_count=$(get_diff_count "updated")
   if is_del_threshld "$del_count" || is_updated_threshld "$update_count"; then
     do_sync=$(is_force_sync_due_to_warn_threshld; echo $?)
-    SUBJECT=$(gen_email_warning_subject "$del_count" "$update_count" "$do_sync")
+    EMAIL_WARN_SUBJECT=$(
+      gen_threshld_warning "$del_count" "$update_count" "$do_sync"
+    )
   else
     do_sync=$(true; echo $?)
   fi
@@ -265,9 +243,8 @@ function is_force_sync_due_to_warn_threshld(){
   false
 }
 
-function gen_email_warning_subject(){
-  local del_count=$1 update_count=$2 force_sync=$3
-  local msg
+function gen_threshld_warning(){
+  local del_count=$1 update_count=$2 force_sync=$3 msg
   if (exit "$force_sync"); then
     if ((del_count >= DEL_THRESHOLD)); then
       msg="Forced sync with deleted files ($del_count) / ($DEL_THRESHOLD) violation"
@@ -289,11 +266,11 @@ function gen_email_warning_subject(){
     fi
     if ((del_count >= DEL_THRESHOLD && update_count >= UP_THRESHOLD)); then
       msg="Multiple violations -"`
-          `" Deleted files ($del_count) / ($DEL_THRESHOLD) and "`
+          `" Deleted files ($del_count) / ($DEL_THRESHOLD) and"`
           `" changed files ($update_count) / ($UP_THRESHOLD)"
     fi
   fi
-  echo "[WARNING] $msg $EMAIL_SUBJECT_PREFIX"
+  echo "$msg"
 }
 
 function run_sync(){
@@ -416,17 +393,42 @@ function run_spindown() {
   # fi
 }
 
-function prepare_mail() {
-  if (contains SYNC "${JOBS[@]}" ) && ((SYNC_ERR)); then
-    # Sync ran but did not complete successfully so lets warn the user
-    SUBJECT="[WARNING] SYNC job ran but did not complete successfully"
-  elif (contains SCRUB "${JOBS[@]}" ) && ((SCRUB_ERR)); then
-    # Scrub ran but did not complete successfully so lets warn the user
-    SUBJECT="[WARNING] SCRUB job ran but did not complete successfully"
-  else
-    SUBJECT="[COMPLETED] $(joinby '+' "${JOBS[@]}") Jobs"
+function gen_email_and_send(){
+  # Stop if no email address was dfined.
+  if [[ -z "$EMAIL_ADDRESS" ]]; then
+    return
   fi
-  SUBJECT+=" $EMAIL_SUBJECT_PREFIX"
+  local subject; subject="$(gen_email_subject)"
+  insert_email_body_title "$subject"
+  if ((VERBOSITY)); then
+    send_mail "$subject" < "$TMP_OUTPUT"
+  else
+    trim_log < "$TMP_OUTPUT" | send_mail "$subject"
+  fi
+}
+
+function gen_email_subject() {
+  local subject
+  if (! contains DIFF "${JOBS[@]}"); then
+    subject="[FAIL] Unable to proceed with SYNC/SCRUB job(s)"
+  elif (contains SYNC "${JOBS[@]}") && ((SYNC_ERR)); then
+    # Sync ran but did not complete successfully so lets warn the user
+    subject="[WARNING] SYNC job ran but did not complete successfully"
+  elif (contains SCRUB "${JOBS[@]}") && ((SCRUB_ERR)); then
+    # Scrub ran but did not complete successfully so lets warn the user
+    subject="[WARNING] SCRUB job ran but did not complete successfully"
+  elif [[ -n "$EMAIL_WARN_SUBJECT" ]]; then
+    # If an early non-fatal warning was detected,
+    subject="[WARNING] $EMAIL_WARN_SUBJECT"
+  else
+    subject="[COMPLETED] $(joinby '+' "${JOBS[@]}") Jobs"
+  fi
+  echo "$subject $EMAIL_SUBJECT_PREFIX"
+}
+
+function insert_email_body_title(){
+  local title; title=$1
+  sed_me "1s:^:##$title \n:" "${TMP_OUTPUT}"
 }
 
 # Remove the verbose output of TOUCH and DIFF commands to make the email more
@@ -443,6 +445,7 @@ function trim_log(){
 
 # Process and mail the email body read from stdin.
 function send_mail(){
+  local subject=$1
   if [[ -z "$EMAIL_ADDRESS" ]]; then
     return
   fi
@@ -456,7 +459,7 @@ function send_mail(){
   #    maintained.
   # 4. The HTML code blocks need to be modified to use <pre></pre> to display
   #    correctly.
-  $MAIL_BIN -a 'Content-Type: text/html' -s "$SUBJECT" "$EMAIL_ADDRESS" \
+  $MAIL_BIN -a 'Content-Type: text/html' -s "$subject" "$EMAIL_ADDRESS" \
     < <(echo "$body" | sed '/^[[:space:]]*$/d; /^ -*$/d; s/$/  /' |
       python -m markdown |
       sed 's/<code>/<pre>/;s%</code>%</pre>%')
