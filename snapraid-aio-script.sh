@@ -124,7 +124,7 @@ function run_diff(){
   elog INFO "DIFF Job started."
   snapraid_cmd diff
   DIFF_CODE=$?
-  elog INFO "DIFF finished."
+  echo "DIFF finished."
   # Handle command error.
   if ((DIFF_CODE == 1)); then
     # Failed to get one or more of the count values, report to user and exit
@@ -354,12 +354,12 @@ function run_touch(){
   else
     echo "No zero sub-second timestamp files found."
   fi
-  elog INFO "TOUCH finished."
+  echo "TOUCH finished."
 }
 
 function run_smart() {
   mkdwn_h3 "SnapRAID SMART"
-  snapraid_cmd smart
+  PATH+=":/usr/sbin" snapraid_cmd smart
 }
 
 function run_status() {

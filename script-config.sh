@@ -76,9 +76,6 @@ TMP_OUTPUT="/tmp/snapRAID.out"
 SNAPRAID_LOG="/var/log/snapraid.log"
 SNAPRAID_CONF="/etc/snapraid.conf"
 
-# Expand PATH for smartctl
-PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-
 # Determine names of first content file...
 SNAPRAID_CONF_LINES=$(grep -E '^[^#;]' $SNAPRAID_CONF)
 CONTENT_FILE=$(echo "$SNAPRAID_CONF_LINES" | grep snapraid.content | head -n 1 | cut -d ' ' -f2)
