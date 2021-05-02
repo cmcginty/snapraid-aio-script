@@ -1,4 +1,3 @@
-#!/bin/bash
 ######################
 #   USER VARIABLES   #
 ######################
@@ -32,6 +31,11 @@ SCRUB_AGE=10
 # don't want to scrub the array every time.
 # Set to 0 to disable this option and run scrub every time.
 SCRUB_DELAYED_RUN=0
+
+# List of external scripts or commands to run before a sync job. The scripts
+# will only run if a sync job is allowed. If any script is not found or
+# returns an error, the sync iob will not proceed.
+PRE_SYNC_COMMAND_LIST=()
 
 # Prehash Data To avoid the risk of a latent hardware issue, you can enable the
 # "pre-hash" mode and have all the data read two times to ensure its integrity.

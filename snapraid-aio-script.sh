@@ -53,7 +53,9 @@ function main(){
 
   mkdwn_h3 "SnapRAID SYNC"
   if is_sync_needed; then
-    run_sync
+    if run_pre_sync_commands; then
+      run_sync
+    fi
   fi
 
   mkdwn_h3 "SnapRAID SCRUB"
@@ -273,6 +275,27 @@ function gen_threshld_warning(){
   echo "$msg"
 }
 
+# Run any user-defined scripts directly before the SnapRAID sync.
+function run_pre_sync_commands(){
+  for CMD in "${PRE_SYNC_COMMAND_LIST[@]}"; do
+    local start=$SECONDS
+    elog INFO "Running pre-sync command: $CMD"
+    mkdwn_codeblk
+    eval "$CMD"
+    local status=$?
+    close_output_and_wait
+    output_to_file_screen
+    mkdwn_codeblk
+    echo "Waited for $(elapsed $start)."
+    if ! (exit $status); then
+      elog WARN "**WARNING** Script returned non-zero exit status ($status)."\
+          "**NOT** proceeding with SYNC job."
+      (exit $status)
+      return
+    fi
+  done
+}
+
 function run_sync(){
   local hash_arg; hash_arg=$( ((PREHASH)) && echo "-h")
   JOBS+=("SYNC")
@@ -394,7 +417,7 @@ function run_spindown() {
 }
 
 function gen_email_and_send(){
-  # Stop if no email address was dfined.
+  # Stop if no email address was defined.
   if [[ -z "$EMAIL_ADDRESS" ]]; then
     return
   fi
@@ -443,7 +466,7 @@ function trim_log(){
     }'
 }
 
-# Process and mail the email body read from stdin.
+# Process and mail the email body read from STDIN.
 function send_mail(){
   local subject=$1
   if [[ -z "$EMAIL_ADDRESS" ]]; then
@@ -452,11 +475,9 @@ function send_mail(){
   local body; body=$(cat)
   # Send the raw $body and append the HTML.
   # Try to workaround py markdown 2.6.8 issues:
-  # 1. Will not format code blocks with empty lines, so just remove
-  #    them.
-  # 2. A dash line inside of code block brekas it, so remove it.
-  # 3. Add trailing double-spaces ensures the line endings are
-  #    maintained.
+  # 1. Will not format code blocks with empty lines, so just remove them.
+  # 2. A dash line inside of code block breaks it, so remove it.
+  # 3. Add trailing double-spaces ensures the line endings are maintained.
   # 4. The HTML code blocks need to be modified to use <pre></pre> to display
   #    correctly.
   $MAIL_BIN -a 'Content-Type: text/html' -s "$subject" "$EMAIL_ADDRESS" \
@@ -539,7 +560,7 @@ function contains(){
 function joinby(){
   local sep=$1; shift
   out=$(printf "$sep"'%s' "$@")
-  echo "${out:1}" # Remove leading seperator.
+  echo "${out:1}" # Remove leading separator.
 }
 
 # Common markdown formatting features.
