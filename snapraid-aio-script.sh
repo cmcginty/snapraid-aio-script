@@ -1,5 +1,5 @@
 #!/bin/bash
-set -o pipefail
+set -uo pipefail
 
 ########################################################################
 #
@@ -66,8 +66,8 @@ function main(){
   mkdwn_h2 "Postprocessing"
   run_touch
   if ((SMART_LOG)); then run_smart; fi
-  if ((SMART_STATUS)); then run_status; fi
-  if ((SMART_SPINDDOWN)); then run_spindown; fi
+  if ((SNAP_STATUS)); then run_status; fi
+  if ((SPINDOWN)); then run_spindown; fi
   elog INFO "All jobs ended."
   mkdwn_ruler
   mkdwn_h2 "Total time elapsed for SnapRAID: $(elapsed)"
