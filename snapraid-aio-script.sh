@@ -476,12 +476,12 @@ function send_mail(){
   # Send the raw $body and append the HTML.
   # Try to workaround py markdown 2.6.8 issues:
   # 1. Will not format code blocks with empty lines, so just remove them.
-  # 2. A dash line inside of code block breaks it, so remove it.
+  # 2. A dash line inside of code block breaks it, so add a leading '+'
   # 3. Add trailing double-spaces ensures the line endings are maintained.
   # 4. The HTML code blocks need to be modified to use <pre></pre> to display
   #    correctly.
   $MAIL_BIN -a 'Content-Type: text/html' -s "$subject" "$EMAIL_ADDRESS" \
-    < <(echo "$body" | sed '/^[[:space:]]*$/d; /^ -*$/d; s/$/  /' |
+    < <(echo "$body" | sed '/^[[:space:]]*$/d; s/^[- ]---/+---/; s/$/  /' |
       python -m markdown |
       sed 's/<code>/<pre>/;s%</code>%</pre>%')
 }
@@ -564,7 +564,8 @@ function joinby(){
 }
 
 # Common markdown formatting features.
-function mkdwn_ruler() { echo "----"; }
+# Prefix with a TAB to exclude from the '----' filter in send_mail()
+function mkdwn_ruler() { echo "---"; }
 function mkdwn_codeblk() { echo "\`\`\`"; }
 function mkdwn_h2() { echo "## $*"; }
 function mkdwn_h3() { echo "### $*"; }
