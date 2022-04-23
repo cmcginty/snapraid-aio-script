@@ -10,7 +10,7 @@ set -uo pipefail
 ######################
 #   CONFIG VARIABLES #
 ######################
-SNAPSCRIPTVERSION="2.9.0.DEV2"
+SNAPSCRIPTVERSION="2.9.1"
 SNAPRAIDVERSION="$(snapraid -V | sed 's/snapraid v\(.*\)by.*/\1/')"
 
 CURRENT_DIR=$(dirname "${0}")
@@ -24,6 +24,7 @@ SYNC_ERR="UNK"
 SCRUB_ERR="UNK"
 DIFF_CODE="UNK"
 EMAIL_WARN_SUBJECT=""
+THRESHOLD_WARNING=0
 
 ######################
 #   MAIN SCRIPT      #
@@ -156,6 +157,7 @@ function is_sync_needed() {
   local del_count; del_count=$(get_diff_count "removed")
   local update_count; update_count=$(get_diff_count "updated")
   if is_del_threshld "$del_count" || is_updated_threshld "$update_count"; then
+    THRESHOLD_WARNING=1
     do_sync=$(is_force_sync_due_to_warn_threshld; echo $?)
     EMAIL_WARN_SUBJECT=$(
       gen_threshld_warning "$del_count" "$update_count" "$do_sync"
@@ -310,7 +312,7 @@ function is_scrub_needed(){
     elog INFO "Scrub job is not enabled. Not running SCRUB job."
     false
     return
-  elif ! contains SYNC "${JOBS[@]}" && ((THRESH_WARNING)); then
+  elif ! contains SYNC "${JOBS[@]}" && ((THRESHOLD_WARNING)); then
     elog INFO "Scrub job is cancelled as parity info is out of sync"\
         "(deleted or changed files threshold has been breached)."
     false
@@ -327,12 +329,12 @@ function is_scrub_needed(){
 # Check if scrub delayed run is enabled and return True if the scrub should be
 # skipped.
 function is_scrub_delayed(){
-	local scrub_count
-	((SCRUB_DELAYED_RUN)) && elog INFO "Delayed scrub is enabled."
+  local scrub_count
+  ((SCRUB_DELAYED_RUN)) && elog INFO "Delayed scrub is enabled."
   scrub_count=$(sed '/^[0-9]*$/!d' "$SCRUB_COUNT_FILE" 2>/dev/null)
   # zero count if file does not exist or did not contain a number
   : "${scrub_count:=0}"
-	if ((scrub_count < SCRUB_DELAYED_RUN)); then
+  if ((scrub_count < SCRUB_DELAYED_RUN)); then
     # YES, so let's increment the warning count and skip the scrub job.
     ((scrub_count += 1))
     echo "$scrub_count" > "$SCRUB_COUNT_FILE"
