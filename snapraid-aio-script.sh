@@ -157,7 +157,7 @@ function is_sync_needed() {
   local update_count; update_count=$(get_diff_count "updated")
   if is_del_threshld "$del_count" || is_updated_threshld "$update_count"; then
     THRESHOLD_WARNING=1
-    do_sync=$(is_force_sync_due_to_warn_threshld >/dev/null; echo $?)
+    is_force_sync_due_to_warn_threshld; do_sync=$(echo $?)
     EMAIL_WARN_SUBJECT=$(
       gen_threshld_warning "$del_count" "$update_count" "$do_sync"
     )
