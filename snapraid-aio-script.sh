@@ -149,8 +149,7 @@ function is_sync_needed() {
   # If no changes found.
   if ((DIFF_CODE == 0)); then
     elog INFO "No change detected. Not running SYNC job."
-    false
-    return
+    false; return
   fi
   # Before sync, check if thresholds were reached and prepare email $SUBJECT
   local do_sync
@@ -158,14 +157,15 @@ function is_sync_needed() {
   local update_count; update_count=$(get_diff_count "updated")
   if is_del_threshld "$del_count" || is_updated_threshld "$update_count"; then
     THRESHOLD_WARNING=1
-    do_sync=$(is_force_sync_due_to_warn_threshld; echo $?)
+    do_sync=$(is_force_sync_due_to_warn_threshld >/dev/null; echo $?)
     EMAIL_WARN_SUBJECT=$(
       gen_threshld_warning "$del_count" "$update_count" "$do_sync"
     )
   else
     do_sync=$(true; echo $?)
   fi
-  return "$do_sync"
+  # Emit the result to set the return value.
+  (exit "$do_sync")
 }
 
 function get_diff_count(){
@@ -212,8 +212,7 @@ function is_force_sync_due_to_warn_threshld(){
     # Safest option, never force a sync.
     elog INFO "Forced sync is not enabled. Check $TMP_OUTPUT for details."\
         "**NOT** proceeding with SYNC job."
-    false
-    return
+    false; return
   fi
 
   if ((SYNC_WARN_THRESHOLD == 0)); then
@@ -292,8 +291,7 @@ function run_pre_sync_commands(){
     if ! (exit $status); then
       elog WARN "**WARNING** Script returned non-zero exit status ($status)."\
           "**NOT** proceeding with SYNC job."
-      (exit $status)
-      return
+      (exit "$status"); return
     fi
   done
 }
@@ -310,18 +308,15 @@ function run_sync(){
 function is_scrub_needed(){
   if ((SCRUB_PERCENT == 0)); then
     elog INFO "Scrub job is not enabled. Not running SCRUB job."
-    false
-    return
+    false; return
   elif ! contains SYNC "${JOBS[@]}" && ((THRESHOLD_WARNING)); then
     elog INFO "Scrub job is cancelled as parity info is out of sync"\
         "(deleted or changed files threshold has been breached)."
-    false
-    return
+    false; return
   elif ((SYNC_ERR)); then
     elog WARN "**WARNING** - check output of SYNC job. Failure detected."\
         "Not proceeding with SCRUB job."
-    false
-    return
+    false; return
   fi
   ! is_scrub_delayed
 }
