@@ -57,8 +57,7 @@ VERBOSITY=0
 # not work. 1 to enable, any other values to disable.
 SPINDOWN=0
 
-# Run snapraid status command to show array general information. Be aware the
-# HTML output is pretty broken.
+# Run snapraid status command to show array general information.
 SNAP_STATUS=0
 
 # location of the snapraid binary

@@ -157,7 +157,7 @@ function is_sync_needed() {
   local update_count; update_count=$(get_diff_count "updated")
   if is_del_threshld "$del_count" || is_updated_threshld "$update_count"; then
     THRESHOLD_WARNING=1
-    is_force_sync_due_to_warn_threshld; do_sync=$(echo $?)
+    is_force_sync_due_to_warn_threshld; do_sync="$?"
     EMAIL_WARN_SUBJECT=$(
       gen_threshld_warning "$del_count" "$update_count" "$do_sync"
     )
@@ -497,14 +497,14 @@ function snapraid_cmd() {
 }
 
 # Due to how process substitution and newer bash versions work, this function
-# stops the output stream which allows wait stops wait from hanging on the tee
-# process. If we do not do this and use normal 'wait' the processes will wait
-# forever as newer bash version will wait for the process substitution to
-# finish. Probably not the best way of 'fixing' this issue. Someone with more
-# knowledge can provide better insight.
+# stops the output stream which stops wait from hanging on the tee process. If
+# we do not do this and use normal 'wait' the processes will wait forever as
+# newer bash version will wait for the process substitution to finish. Probably
+# not the best way of 'fixing' this issue. Someone with more knowledge can
+# provide better insight.
 function close_output_and_wait(){
   local pid
-  exec >& "$OUT" 2>& "$ERROR"
+  exec 1>& "$OUT" 2>& "$ERROR"
   for pid in $(pgrep -P $$); do
     wait "$pid"
   done
@@ -523,7 +523,7 @@ function sed_me(){
   # process and redirect output. We close stream because of the calls to new
   # wait function in between sed_me calls. If we do not do this we try to close
   # Processes which are not parents of the shell.
-  exec >& "$OUT" 2>& "$ERROR"
+  exec 1>& "$OUT" 2>& "$ERROR"
   sed -i "$1" "$2"
   output_to_file_screen
 }
