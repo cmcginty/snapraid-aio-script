@@ -73,7 +73,6 @@ function main(){
   elog INFO "All jobs ended."
   mkdwn_ruler
   mkdwn_h2 "Total time elapsed for SnapRAID: $(elapsed)"
-  gen_email_and_send
 }
 
 #######################
@@ -106,7 +105,6 @@ function sanity_check() {
     elog ERROR "**ERROR** Content file ($CONTENT_FILE) not found!"
     elog ERROR "**ERROR** Please check the status of your disks!"\
         "The script exits here due to missing file or disk..."
-    gen_email_and_send
     exit 1;
   fi
   elog INFO "Testing that all parity files are present."
@@ -115,7 +113,6 @@ function sanity_check() {
       elog ERROR "**ERROR** Parity file ($i) not found!"
       elog ERROR "**ERROR** Please check the status of your disks!"\
           "The script exits here due to missing file or disk..."
-      gen_email_and_send
       exit 1;
     fi
   done
@@ -132,7 +129,6 @@ function run_diff(){
   if ((DIFF_CODE == 1)); then
     # Failed to get one or more of the count values, report to user and exit
     # with error code.
-    gen_email_and_send
     exit 1;
   fi
   JOBS+=("DIFF")
@@ -149,6 +145,7 @@ function is_sync_needed() {
   # If no changes found.
   if ((DIFF_CODE == 0)); then
     elog INFO "No change detected. Not running SYNC job."
+    SYNC_ERR=0
     false; return
   fi
   # Before sync, check if thresholds were reached and prepare email $SUBJECT
@@ -566,5 +563,8 @@ function mkdwn_ruler() { echo "---"; }
 function mkdwn_codeblk() { echo "\`\`\`"; }
 function mkdwn_h2() { echo "## $*"; }
 function mkdwn_h3() { echo "### $*"; }
+
+# Ensure email generation on all errors
+trap gen_email_and_send EXIT
 
 main "$@"
